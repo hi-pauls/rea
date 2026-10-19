@@ -113,8 +113,9 @@ export const createKunaFileCloseScope = (
 
 /**
  * Environment for every Kuna child. Kuna unpacks its built-in SLEIGH tree into
- * the per-user cache under HOME (macOS) or XDG_CACHE_HOME (Linux), so both
- * point inside REA's own cache root instead of the user's.
+ * the per-user cache under HOME (macOS), XDG_CACHE_HOME (Linux) or the
+ * temporary directory named by TEMP and TMP (Windows), so all of them point
+ * inside REA's own cache root instead of the user's.
  */
 export const kunaChildEnvironment = (
   configuration: KunaConfiguration,
@@ -123,6 +124,8 @@ export const kunaChildEnvironment = (
   return {
     HOME: home,
     XDG_CACHE_HOME: join(home, ".cache"),
+    TEMP: join(home, ".cache"),
+    TMP: join(home, ".cache"),
     NO_COLOR: "1",
   };
 };

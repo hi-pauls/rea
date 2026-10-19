@@ -199,10 +199,13 @@ const isDamaged = (cause: unknown): boolean =>
     String(cause.code),
   );
 
+/** Windows reports a directory renamed onto an existing one as EPERM. */
 const isPublishedByAnother = (cause: unknown): boolean =>
   cause instanceof Error &&
   "code" in cause &&
-  (cause.code === "EEXIST" || cause.code === "ENOTEMPTY");
+  (cause.code === "EEXIST" ||
+    cause.code === "ENOTEMPTY" ||
+    (process.platform === "win32" && cause.code === "EPERM"));
 
 const parseManifest = (text: string): KunaProjectManifest | undefined => {
   try {

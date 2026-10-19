@@ -95,6 +95,12 @@ const defaultCacheRoot = (
   const home = homeDirectoryFromEnvironment(environment, platform);
   if (platform === "darwin")
     return join(home, "Library", "Caches", "rea", "kuna");
+  if (platform === "win32")
+    return join(
+      environment.LOCALAPPDATA?.trim() || join(home, "AppData", "Local"),
+      "rea",
+      "kuna",
+    );
   const xdg = environment.XDG_CACHE_HOME;
   return join(
     xdg !== undefined && isAbsolute(xdg) ? xdg : join(home, ".cache"),
@@ -117,7 +123,7 @@ export const readKunaConfiguration = (
       `REA_KUNA_COMMAND must be an absolute path; received ${command}. ${KUNA_COMMAND_REMEDIATION}`,
       "REA_KUNA_COMMAND",
     );
-  if (platform !== "darwin" && platform !== "linux")
+  if (platform !== "darwin" && platform !== "linux" && platform !== "win32")
     return failure("unsupported_host", KUNA_UNSUPPORTED_HOST_REMEDIATION);
 
   const cacheRoot = environment.REA_KUNA_CACHE_DIR;

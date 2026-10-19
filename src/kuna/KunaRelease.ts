@@ -9,7 +9,7 @@ export const KUNA_COMMAND_REMEDIATION = `Set REA_KUNA_COMMAND to the absolute pa
 
 /** Remediation when the host cannot supervise a Kuna process tree. */
 export const KUNA_UNSUPPORTED_HOST_REMEDIATION =
-  "Use Linux or macOS for the Kuna provider. Windows process-tree ownership for Kuna is not verified.";
+  "Use Linux, macOS or Windows for the Kuna provider.";
 
 /** Remediation when `kuna --version` cannot establish the installed release. */
 export const KUNA_VERSION_PROBE_REMEDIATION =

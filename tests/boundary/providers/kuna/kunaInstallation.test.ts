@@ -126,11 +126,11 @@ it("distinguishes an unset command from an invalid one", async () => {
   });
 });
 
-it("declares Windows hosts unsupported before touching the command", async () => {
+it("declares other hosts unsupported before touching the command", async () => {
   expect(
     await inspectKunaInstallation(
       { REA_KUNA_COMMAND: "/opt/kuna/kuna" },
-      { platform: "win32" },
+      { platform: "freebsd" },
     ),
   ).toMatchObject({ ok: false, error: { code: "unsupported_host" } });
 });
@@ -160,6 +160,12 @@ it("parses cache, timeout and job settings at the configuration boundary", () =>
   expect(readKunaConfiguration(environment, "darwin")).toMatchObject({
     value: { cacheRoot: "/home/analyst/Library/Caches/rea/kuna" },
   });
+  expect(
+    readKunaConfiguration(
+      { ...environment, LOCALAPPDATA: "/users/analyst/local" },
+      "win32",
+    ),
+  ).toMatchObject({ value: { cacheRoot: "/users/analyst/local/rea/kuna" } });
   expect(
     readKunaConfiguration(
       {
