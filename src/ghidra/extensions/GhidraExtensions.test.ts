@@ -81,28 +81,7 @@ const result = (sha256: string): GhidraExtensionResult => ({
 });
 
 describe("optional Ghidra extension refusals", () => {
-  it("rejects unsupported hosts and target architectures before opening files", async () => {
-    const host = await resolveGhidraExtensions(
-      config("/absent.jar"),
-      target,
-      "darwin",
-      resources,
-    );
-    expect(host.ok).toBe(false);
-    if (!host.ok)
-      // A host restriction is not an execution failure to retry or repair.
-      expect(projectAnalysisError(host.error)).toMatchObject({
-        code: "capability_unavailable",
-        retryable: false,
-        message: expect.stringContaining("verified on Linux only"),
-        remediation: {
-          action: expect.stringContaining("omit REA_GHIDRA_NATIVEAOT_JAR"),
-        },
-        details: {
-          provider_id: "ghidra",
-          operation: "resolve_analysis_profile",
-        },
-      });
+  it("rejects unsupported target architectures before opening files", async () => {
     const architecture = await resolveGhidraExtensions(
       config("/absent.jar"),
       {
@@ -323,16 +302,15 @@ describe("Ghidra extension profile and producer validation", () => {
     ).toBe(
       "Configured Ghidra extension inventory differs from the resolved analysis profile.",
     );
-    expect(
-      validateGhidraExtensionProfile(
-        [extension],
-        config(path),
-        target,
-        "darwin",
-      ),
-    ).toBe(
-      "NativeAOT recovery is verified on Linux only; omit REA_GHIDRA_NATIVEAOT_JAR for ordinary native analysis.",
-    );
+    for (const platform of ["darwin", "win32"] as const)
+      expect(
+        validateGhidraExtensionProfile(
+          [extension],
+          config(path),
+          target,
+          platform,
+        ),
+      ).toBeNull();
     expect(
       validateGhidraExtensionProfile(
         [{ ...extension, entry_class: "arbitrary.Code" }],
