@@ -44,15 +44,20 @@ export const preparePcapNativeBound = async (
     };
   } catch (cause) {
     if (cause instanceof AnalysisError) throw cause;
-    const reason =
-      "Cannot establish the resource bound before processing capture bytes.";
+    const linux = process.platform === "linux";
+    const reason = linux
+      ? "Cannot establish the selected Linux resource limiter before processing capture bytes."
+      : "Cannot establish the resource bound before processing capture bytes.";
+    const remedy = linux
+      ? ` Check that ${PRLIMIT_COMMAND_ENV} (default /usr/bin/prlimit) names an absolute, executable util-linux prlimit.`
+      : "";
     throw new AnalysisCapabilityUnavailableError(
       "pcap",
       "inspect_pcap_capture",
       reason,
       {
         cause,
-        userMessage: `${reason} (${cause instanceof Error ? cause.message : String(cause)}) On Linux, check that ${PRLIMIT_COMMAND_ENV} (default /usr/bin/prlimit) names an absolute, executable util-linux prlimit.`,
+        userMessage: `${reason} (${cause instanceof Error ? cause.message : String(cause)})${remedy}`,
       },
     );
   }

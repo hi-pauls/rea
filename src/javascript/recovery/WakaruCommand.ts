@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { access, realpath, stat } from "node:fs/promises";
+import { access, realpath } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import {
   AnalysisCancelledError,
@@ -11,9 +11,8 @@ import { ProviderAdapterError } from "../../domain/providerAdapterError.js";
 import { ProviderCleanupError } from "../../domain/providerCleanupError.js";
 import { cleanupOwnedProcessGroup } from "../../process/ProcessOwnership.js";
 import {
-  boundedLaunch,
-  describeHostResourceBound,
-  prepareHostResourceBound,
+  fixedProfileLaunch,
+  resolveHostResourceEnforcer,
 } from "../../process/HostResourceBound.js";
 import {
   ProviderProcessSupervisor,
@@ -89,16 +88,13 @@ export const resolveWakaruCommand = async (
       command,
       RECOVERY_LIMITS.outputBytes,
     );
+    // The configured path is what runs, as upstream ran it, not the resolved one.
     const limiter = (
-      await prepareHostResourceBound({
-        configured: WAKARU_BOUND_LIMITS,
+      await resolveHostResourceEnforcer({
         prlimitVariable: "REA_JAVASCRIPT_PRLIMIT_COMMAND",
         environment,
-        readLimits: async (limits) => limits,
       })
-    ).enforcer;
-    if (!(await stat(limiter)).isFile())
-      throw new TypeError(`Resource limiter is not a regular file: ${limiter}`);
+    ).configuredEnforcer;
     return { command, limiter, ...fingerprint };
   } catch (cause: unknown) {
     const reason = `Configured Wakaru or its resource limiter is unavailable: ${recoveryFailureMessage(cause)}`;
@@ -125,13 +121,16 @@ type WakaruCommandContext = {
 export const runWakaruCommand = async (context: WakaruCommandContext) => {
   checkRecoveryDeadline(context.deadline, context.signal);
   const runId = `rea-wakaru-${randomUUID()}`;
-  const bound = describeHostResourceBound(
-    process.platform,
-    context.limiter,
-    WAKARU_BOUND_LIMITS,
-  );
   const spawned = await (context.launcher ?? spawnOwnedProviderProcess)({
-    ...boundedLaunch(bound, context.command, context.arguments),
+    ...fixedProfileLaunch(
+      {
+        platform: process.platform,
+        enforcer: context.limiter,
+        limits: WAKARU_BOUND_LIMITS,
+      },
+      context.command,
+      context.arguments,
+    ),
     expectedCommand: null,
     runId,
     cwd: context.cwd,

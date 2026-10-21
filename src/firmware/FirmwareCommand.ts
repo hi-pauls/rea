@@ -19,9 +19,8 @@ import {
 } from "../process/ProviderProcess.js";
 import { cleanupOwnedProcessGroup } from "../process/ProcessOwnership.js";
 import {
-  boundedLaunch,
-  describeHostResourceBound,
-  prepareHostResourceBound,
+  fixedProfileLaunch,
+  resolveHostResourceEnforcer,
 } from "../process/HostResourceBound.js";
 import { FIRMWARE_LIMITS } from "./FirmwareRelease.js";
 import {
@@ -82,25 +81,18 @@ export const resolveFirmwareCommand = async (
       `${variable} is not a readable executable regular file: ${command}: ${cause instanceof Error ? cause.message : String(cause)}`,
     );
   }
-  const bound = await prepareHostResourceBound({
-    configured: FIRMWARE_BOUND_LIMITS,
+  const enforcement = await resolveHostResourceEnforcer({
     prlimitVariable: "REA_FIRMWARE_PRLIMIT_COMMAND",
     environment,
-    readLimits: async (limits) => limits,
-  })
-    .then(async (prepared) => {
-      if (!(await stat(prepared.enforcer)).isFile())
-        throw new TypeError("Configured path is not a regular file");
-      return prepared;
-    })
-    .catch((cause: unknown) => {
-      throw firmwareToolUnavailable(
-        engine,
-        operation,
-        `Resource limiter is unavailable: ${cause instanceof Error ? cause.message : String(cause)}; on Linux provide util-linux prlimit`,
-      );
-    });
-  return { command, limiter: bound.enforcer, sha256 };
+  }).catch((cause: unknown) => {
+    throw firmwareToolUnavailable(
+      engine,
+      operation,
+      `Resource limiter is unavailable: ${cause instanceof Error ? cause.message : String(cause)}; on Linux provide util-linux prlimit`,
+    );
+  });
+  // The configured path is what runs, as upstream ran it, not the resolved one.
+  return { command, limiter: enforcement.configuredEnforcer, sha256 };
 };
 
 /** The engines' ceilings, the fixed prlimit profile they had on Linux. */
@@ -129,12 +121,20 @@ export const runFirmwareCommand = async (context: {
   if (signal.aborted)
     throw new AnalysisCancelledError(operation, { cause: signal.reason });
   const runId = `rea-firmware-${randomUUID()}`;
-  const bound = describeHostResourceBound(process.platform, context.limiter, {
-    ...FIRMWARE_BOUND_LIMITS,
-    file_bytes: context.outputBudget?.bytes ?? FIRMWARE_LIMITS.reportBytes,
-  });
   const spawned = await (context.launcher ?? spawnOwnedProviderProcess)({
-    ...boundedLaunch(bound, context.command, context.args),
+    ...fixedProfileLaunch(
+      {
+        platform: process.platform,
+        enforcer: context.limiter,
+        limits: {
+          ...FIRMWARE_BOUND_LIMITS,
+          file_bytes:
+            context.outputBudget?.bytes ?? FIRMWARE_LIMITS.reportBytes,
+        },
+      },
+      context.command,
+      context.args,
+    ),
     expectedCommand: null,
     runId,
     cwd: context.cwd,

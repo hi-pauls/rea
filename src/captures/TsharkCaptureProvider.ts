@@ -15,7 +15,8 @@ import {
 } from "../process/LinuxResourceLimits.js";
 import {
   boundedLaunch,
-  prepareHostResourceBound,
+  boundForHostEnforcer,
+  resolveHostResourceEnforcer,
 } from "../process/HostResourceBound.js";
 import { parsePacketOutput } from "./parsePacketOutput.js";
 import { randomUUID } from "node:crypto";
@@ -139,12 +140,9 @@ export class TsharkCaptureProvider implements PacketCapturePort {
           cause: options.signal.reason,
         });
       await this.#resources.release();
-      const bound = await prepareHostResourceBound({
-        configured: limits,
+      const enforcement = await resolveHostResourceEnforcer({
         prlimitVariable: "REA_TSHARK_PRLIMIT_COMMAND",
         environment: this.environment,
-        readLimits: (configuredLimits) =>
-          this.#resources.readLimits(configuredLimits),
         platform: this.platform,
       });
       const configured = this.environment.REA_TSHARK_COMMAND ?? "";
@@ -157,11 +155,16 @@ export class TsharkCaptureProvider implements PacketCapturePort {
         64 * 1024 * 1024,
         options?.signal,
       );
-      const limiter = bound.enforcer;
+      const limiter = enforcement.enforcer;
       const limiterIdentity = await this.#resources.read(
         limiter,
         64 * 1024 * 1024,
         options?.signal,
+      );
+      const bound = await boundForHostEnforcer(
+        enforcement,
+        limits,
+        (configuredLimits) => this.#resources.readLimits(configuredLimits),
       );
       effectiveLimits = bound.limits;
       const limitArguments = boundedLaunch(bound, command, []).arguments;

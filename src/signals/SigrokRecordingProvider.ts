@@ -14,7 +14,8 @@ import {
 } from "../process/LinuxResourceLimits.js";
 import {
   boundedLaunch,
-  prepareHostResourceBound,
+  boundForHostEnforcer,
+  resolveHostResourceEnforcer,
 } from "../process/HostResourceBound.js";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
@@ -135,11 +136,9 @@ export class SigrokRecordingProvider implements SignalRecordingPort {
           cause: options.signal.reason,
         });
       await this.#resources.release();
-      const bound = await prepareHostResourceBound({
-        configured: LIMITS,
+      const enforcement = await resolveHostResourceEnforcer({
         prlimitVariable: "REA_SIGROK_PRLIMIT_COMMAND",
         environment: this.environment,
-        readLimits: (limits) => this.#resources.readLimits(limits),
         platform: this.platform,
       });
       const configured = this.environment.REA_SIGROK_COMMAND ?? "";
@@ -154,11 +153,14 @@ export class SigrokRecordingProvider implements SignalRecordingPort {
         64 * 1024 * 1024,
         options?.signal,
       );
-      const limiter = bound.enforcer;
+      const limiter = enforcement.enforcer;
       const limiterIdentity = await this.#resources.read(
         limiter,
         64 * 1024 * 1024,
         options?.signal,
+      );
+      const bound = await boundForHostEnforcer(enforcement, LIMITS, (limits) =>
+        this.#resources.readLimits(limits),
       );
       effectiveLimits = bound.limits;
       const limitArguments = boundedLaunch(bound, command, []).arguments;

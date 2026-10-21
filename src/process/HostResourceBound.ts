@@ -1,4 +1,4 @@
-import { access, realpath } from "node:fs/promises";
+import { access, realpath, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,12 +48,77 @@ const windowsAddonPath = (): string =>
     new URL("../../native/windows/build/rea-windows-x64.node", import.meta.url),
   );
 
+// A directory passes the X_OK check, so the regular-file test is what refuses it.
 const resolveExecutable = async (path: string, label: string) => {
   if (!isAbsolute(path)) throw new Error(`${label} must be absolute.`);
   const resolved = await realpath(path);
   await access(resolved, constants.X_OK);
+  if (!(await stat(resolved)).isFile())
+    throw new Error(`${label} is not an executable regular file: ${path}`);
   return resolved;
 };
+
+/** The resolved component that enforces a host's bound, before limits are read. */
+export interface HostResourceEnforcer {
+  readonly platform: NodeJS.Platform;
+  readonly configuredEnforcer: string;
+  readonly enforcer: string;
+}
+
+/**
+ * Resolve the component that enforces the bound on this host, refusing hosts
+ * where none exists. Effective limits are read separately, by
+ * boundForHostEnforcer, so a provider can keep reading them after its own
+ * configuration checks.
+ */
+export const resolveHostResourceEnforcer = async (
+  request: Omit<HostResourceBoundRequest, "configured" | "readLimits">,
+): Promise<HostResourceEnforcer> => {
+  const platform = request.platform ?? process.platform;
+  if (platform === "linux") {
+    const configuredEnforcer =
+      request.environment[request.prlimitVariable] ?? "/usr/bin/prlimit";
+    return {
+      platform,
+      configuredEnforcer,
+      enforcer: await resolveExecutable(
+        configuredEnforcer,
+        request.prlimitVariable,
+      ),
+    };
+  }
+  if (platform === "darwin")
+    return {
+      platform,
+      configuredEnforcer: "/bin/sh",
+      enforcer: await resolveExecutable("/bin/sh", "/bin/sh"),
+    };
+  if (platform === "win32") {
+    const enforcer = windowsAddonPath();
+    await access(enforcer, constants.R_OK);
+    return { platform, configuredEnforcer: enforcer, enforcer };
+  }
+  throw new Error(
+    `No resource bound can be enforced on ${platform}: REA supports Linux prlimit, macOS ulimit with a resident-memory watchdog, and Windows Job Objects.`,
+  );
+};
+
+/**
+ * Complete a resolved enforcer into the bound: Linux keeps stricter inherited
+ * ceilings, which are read here, while the other hosts apply the configured
+ * limits as they are.
+ */
+export const boundForHostEnforcer = async (
+  resolved: HostResourceEnforcer,
+  configured: LinuxResourceLimits,
+  readLimits: HostResourceBoundRequest["readLimits"],
+): Promise<HostResourceBound> =>
+  describeHostResourceBound(
+    resolved.platform,
+    resolved.enforcer,
+    resolved.platform === "linux" ? await readLimits(configured) : configured,
+    resolved.configuredEnforcer,
+  );
 
 /**
  * Establish the bound one producer runs under.
@@ -65,39 +130,12 @@ const resolveExecutable = async (path: string, label: string) => {
  */
 export const prepareHostResourceBound = async (
   request: HostResourceBoundRequest,
-): Promise<HostResourceBound> => {
-  const platform = request.platform ?? process.platform;
-  const { configured } = request;
-  if (platform === "linux") {
-    const configuredEnforcer =
-      request.environment[request.prlimitVariable] ?? "/usr/bin/prlimit";
-    const enforcer = await resolveExecutable(
-      configuredEnforcer,
-      request.prlimitVariable,
-    );
-    return describeHostResourceBound(
-      platform,
-      enforcer,
-      await request.readLimits(configured),
-      configuredEnforcer,
-    );
-  }
-  if (platform === "darwin")
-    return describeHostResourceBound(
-      platform,
-      await resolveExecutable("/bin/sh", "/bin/sh"),
-      configured,
-      "/bin/sh",
-    );
-  if (platform === "win32") {
-    const enforcer = windowsAddonPath();
-    await access(enforcer, constants.R_OK);
-    return describeHostResourceBound(platform, enforcer, configured, enforcer);
-  }
-  throw new Error(
-    `No resource bound can be enforced on ${platform}: REA supports Linux prlimit, macOS ulimit with a resident-memory watchdog, and Windows Job Objects.`,
+): Promise<HostResourceBound> =>
+  boundForHostEnforcer(
+    await resolveHostResourceEnforcer(request),
+    request.configured,
+    request.readLimits,
   );
-};
 
 /**
  * Build the bound for an enforcer already resolved by prepareHostResourceBound,
@@ -150,6 +188,43 @@ export const describeHostResourceBound = (
     limitation: `Linux prlimit preserves stricter inherited ceilings: ${limits.address_space_bytes} bytes of per-process address space, ${limits.file_bytes} bytes per file and ${limits.cpu_seconds} CPU seconds; core dumps are disabled. These are not aggregate machine quotas.`,
   };
 };
+
+/**
+ * Launch coordinates under the fixed prlimit profile the firmware and Wakaru
+ * engines had on Linux: one value sets the soft and the hard limit together and
+ * inherited ceilings are not consulted. The other hosts take their usual bound.
+ */
+export const fixedProfileLaunch = (
+  {
+    platform,
+    enforcer,
+    limits,
+  }: {
+    readonly platform: NodeJS.Platform;
+    readonly enforcer: string;
+    readonly limits: LinuxResourceLimits;
+  },
+  command: string,
+  args: readonly string[],
+): ReturnType<typeof boundedLaunch> =>
+  platform === "linux"
+    ? {
+        command: enforcer,
+        arguments: [
+          `--as=${String(limits.address_space_bytes)}`,
+          `--fsize=${String(limits.file_bytes)}`,
+          "--core=0",
+          `--cpu=${String(limits.cpu_seconds)}`,
+          "--",
+          command,
+          ...args,
+        ],
+      }
+    : boundedLaunch(
+        describeHostResourceBound(platform, enforcer, limits),
+        command,
+        args,
+      );
 
 /** Launch coordinates for a producer under its bound. */
 export const boundedLaunch = (
