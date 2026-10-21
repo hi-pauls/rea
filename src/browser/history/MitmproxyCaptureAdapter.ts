@@ -7,9 +7,11 @@ import type { HistoricalCaptureFormatAdapter } from "./HistoricalCaptureFormatAd
 import { MITMPROXY_CAPTURE_PROVIDER_IDENTITY } from "./CaptureRelease.js";
 const OPERATION = "inspect_web_network_capture";
 const MITMDUMP_REQUIREMENT =
-  "Native capture decoding requires Linux and an absolute REA_MITMDUMP_COMMAND path to caller-supplied mitmdump 12.2.3; HAR needs no external engine.";
+  "Native capture decoding requires an absolute REA_MITMDUMP_COMMAND path to caller-supplied mitmdump 12.2.3; HAR needs no external engine.";
+// The bridge lowers RLIMIT_AS itself where rlimits exist; Windows and macOS bound the tree here.
+const DECODER_MEMORY_LIMIT_BYTES = 768 * 1024 * 1024;
 
-/** Native mitmproxy decoding is offline and uses only an explicitly configured Linux tool. */
+/** Native mitmproxy decoding is offline and uses only an explicitly configured tool. */
 export class MitmproxyCaptureAdapter implements HistoricalCaptureFormatAdapter {
   readonly format = "mitmproxy";
   readonly identity = MITMPROXY_CAPTURE_PROVIDER_IDENTITY;
@@ -17,13 +19,13 @@ export class MitmproxyCaptureAdapter implements HistoricalCaptureFormatAdapter {
   async command(
     requestPath: string,
     runtimePath: string,
-  ): Promise<{ command: string; arguments: readonly string[] }> {
+  ): Promise<{
+    command: string;
+    arguments: readonly string[];
+    memoryLimitBytes?: number;
+  }> {
     const command = this.environment.REA_MITMDUMP_COMMAND;
-    if (
-      process.platform !== "linux" ||
-      command === undefined ||
-      !isAbsolute(command)
-    )
+    if (command === undefined || !isAbsolute(command))
       throw new AnalysisCapabilityUnavailableError(
         "mitmproxy",
         OPERATION,
@@ -57,6 +59,9 @@ export class MitmproxyCaptureAdapter implements HistoricalCaptureFormatAdapter {
           new URL("../../../bridge/mitmproxy/capture.py", import.meta.url),
         ),
       ],
+      ...(process.platform === "linux"
+        ? {}
+        : { memoryLimitBytes: DECODER_MEMORY_LIMIT_BYTES }),
     };
   }
 }

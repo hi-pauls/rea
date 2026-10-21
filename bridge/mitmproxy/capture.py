@@ -10,8 +10,13 @@ import ipaddress
 import json
 import math
 import re
-import resource
 from pathlib import Path
+
+try:
+    import resource
+except ImportError:
+    # Windows has no rlimits; REA bounds the decoder with a Job Object instead.
+    resource = None
 from urllib.parse import unquote_to_bytes
 
 from mitmproxy import ctx, version
@@ -360,10 +365,11 @@ class OfflineCapture:
         loader.add_option("rea_request_path", str, "", "REA private offline capture request")
 
     def running(self):
-        resource.setrlimit(resource.RLIMIT_AS, (768 * 1024 * 1024, 768 * 1024 * 1024))
-        resource.setrlimit(resource.RLIMIT_CPU, (30, 30))
-        resource.setrlimit(resource.RLIMIT_FSIZE, (OUTPUT_BYTES, OUTPUT_BYTES))
-        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+        if resource is not None:
+            resource.setrlimit(resource.RLIMIT_AS, (768 * 1024 * 1024, 768 * 1024 * 1024))
+            resource.setrlimit(resource.RLIMIT_CPU, (30, 30))
+            resource.setrlimit(resource.RLIMIT_FSIZE, (OUTPUT_BYTES, OUTPUT_BYTES))
+            resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         request = json.loads(Path(ctx.options.rea_request_path).read_text(encoding="utf-8"))
         try:
             response = {"ok": True, "value": decode(request)}
