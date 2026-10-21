@@ -75,56 +75,80 @@ export const prepareHostResourceBound = async (
       configuredEnforcer,
       request.prlimitVariable,
     );
-    const limits = await request.readLimits(configured);
-    return {
-      mechanism: "prlimit",
-      configuredEnforcer,
+    return describeHostResourceBound(
+      platform,
       enforcer,
-      enforcerArguments: [
-        `--as=${limits.address_space_bytes}:${limits.address_space_bytes}`,
-        `--fsize=${limits.file_bytes}:${limits.file_bytes}`,
-        `--cpu=${limits.cpu_seconds}:${limits.cpu_seconds}`,
-        "--core=0:0",
-        "--",
-      ],
-      limits,
-      limitation: `Linux prlimit preserves stricter inherited ceilings: ${limits.address_space_bytes} bytes of per-process address space, ${limits.file_bytes} bytes per file and ${limits.cpu_seconds} CPU seconds; core dumps are disabled. These are not aggregate machine quotas.`,
-    };
+      await request.readLimits(configured),
+      configuredEnforcer,
+    );
   }
-  if (platform === "darwin") {
-    const enforcer = await resolveExecutable("/bin/sh", "/bin/sh");
+  if (platform === "darwin")
+    return describeHostResourceBound(
+      platform,
+      await resolveExecutable("/bin/sh", "/bin/sh"),
+      configured,
+      "/bin/sh",
+    );
+  if (platform === "win32") {
+    const enforcer = windowsAddonPath();
+    await access(enforcer, constants.R_OK);
+    return describeHostResourceBound(platform, enforcer, configured, enforcer);
+  }
+  throw new Error(
+    `No resource bound can be enforced on ${platform}: REA supports Linux prlimit, macOS ulimit with a resident-memory watchdog, and Windows Job Objects.`,
+  );
+};
+
+/**
+ * Build the bound for an enforcer already resolved by prepareHostResourceBound,
+ * without touching the filesystem; for commands run after that resolution.
+ */
+export const describeHostResourceBound = (
+  platform: NodeJS.Platform,
+  enforcer: string,
+  limits: LinuxResourceLimits,
+  configuredEnforcer = enforcer,
+): HostResourceBound => {
+  if (platform === "darwin")
     return {
       mechanism: "darwin-ulimit-rss-watchdog",
-      configuredEnforcer: "/bin/sh",
+      configuredEnforcer,
       enforcer,
       enforcerArguments: [
         "-c",
         DARWIN_LIMIT_SCRIPT,
         "rea-limit",
-        String(configured.cpu_seconds),
-        String(Math.floor(configured.file_bytes / 1024)),
+        String(limits.cpu_seconds),
+        String(Math.floor(limits.file_bytes / 1024)),
       ],
-      memoryLimitBytes: configured.address_space_bytes,
-      limits: configured,
-      limitation: `macOS ulimit enforces ${configured.cpu_seconds} CPU seconds and ${configured.file_bytes} bytes per file with core dumps disabled; the process group is killed once its sampled resident memory passes ${configured.address_space_bytes} bytes, which a burst shorter than the sample interval can overshoot. These are not aggregate machine quotas.`,
+      memoryLimitBytes: limits.address_space_bytes,
+      limits,
+      limitation: `macOS ulimit enforces ${limits.cpu_seconds} CPU seconds and ${limits.file_bytes} bytes per file with core dumps disabled; the process group is killed once its sampled resident memory passes ${limits.address_space_bytes} bytes, which a burst shorter than the sample interval can overshoot. These are not aggregate machine quotas.`,
     };
-  }
-  if (platform === "win32") {
-    const enforcer = windowsAddonPath();
-    await access(enforcer, constants.R_OK);
+  if (platform === "win32")
     return {
       mechanism: "windows-job-object",
-      configuredEnforcer: enforcer,
+      configuredEnforcer,
       enforcer,
       enforcerArguments: [],
-      memoryLimitBytes: configured.address_space_bytes,
-      limits: configured,
-      limitation: `Each owned Windows tool tree has a ${configured.address_space_bytes}-byte Job Object committed-memory limit; CPU time and file size are not enforced on Windows. This is not a machine-wide quota.`,
+      memoryLimitBytes: limits.address_space_bytes,
+      limits,
+      limitation: `Each owned Windows tool tree has a ${limits.address_space_bytes}-byte Job Object committed-memory limit; CPU time and file size are not enforced on Windows. This is not a machine-wide quota.`,
     };
-  }
-  throw new Error(
-    `No resource bound can be enforced on ${platform}: REA supports Linux prlimit, macOS ulimit with a resident-memory watchdog, and Windows Job Objects.`,
-  );
+  return {
+    mechanism: "prlimit",
+    configuredEnforcer,
+    enforcer,
+    enforcerArguments: [
+      `--as=${limits.address_space_bytes}:${limits.address_space_bytes}`,
+      `--fsize=${limits.file_bytes}:${limits.file_bytes}`,
+      `--cpu=${limits.cpu_seconds}:${limits.cpu_seconds}`,
+      "--core=0:0",
+      "--",
+    ],
+    limits,
+    limitation: `Linux prlimit preserves stricter inherited ceilings: ${limits.address_space_bytes} bytes of per-process address space, ${limits.file_bytes} bytes per file and ${limits.cpu_seconds} CPU seconds; core dumps are disabled. These are not aggregate machine quotas.`,
+  };
 };
 
 /** Launch coordinates for a producer under its bound. */

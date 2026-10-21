@@ -11,6 +11,11 @@ import { ProviderAdapterError } from "../../domain/providerAdapterError.js";
 import { ProviderCleanupError } from "../../domain/providerCleanupError.js";
 import { cleanupOwnedProcessGroup } from "../../process/ProcessOwnership.js";
 import {
+  boundedLaunch,
+  describeHostResourceBound,
+  prepareHostResourceBound,
+} from "../../process/HostResourceBound.js";
+import {
   ProviderProcessSupervisor,
   spawnOwnedProviderProcess,
   type OwnedProviderProcessSpawnOptions,
@@ -26,7 +31,14 @@ import { RECOVERY_LIMITS } from "./WakaruRelease.js";
 
 const OPERATION = "recover_javascript_sources";
 const WAKARU_REQUIREMENT =
-  "Provide an absolute REA_WAKARU_COMMAND pointing to a Wakaru ^1.13.0 Linux x64 binary (verified with 1.14.0); no tool is installed by REA. See docs/javascript-recovery.md#install-wakaru.";
+  "Provide an absolute REA_WAKARU_COMMAND pointing to a Wakaru ^1.13.0 binary for this host (verified with 1.14.0); no tool is installed by REA. See docs/javascript-recovery.md#install-wakaru.";
+
+/** Wakaru's ceilings, the fixed prlimit profile it had on Linux. */
+const WAKARU_BOUND_LIMITS = {
+  address_space_bytes: RECOVERY_LIMITS.addressSpaceBytes,
+  file_bytes: RECOVERY_LIMITS.outputBytes,
+  cpu_seconds: 120,
+};
 
 /** Inject the owned process launcher while retaining production protocol parsing. */
 export type WakaruLauncher = (
@@ -63,12 +75,7 @@ export const resolveWakaruCommand = async (
   environment: Readonly<Record<string, string | undefined>>,
 ) => {
   const configured = environment.REA_WAKARU_COMMAND;
-  if (
-    process.platform !== "linux" ||
-    process.arch !== "x64" ||
-    configured === undefined ||
-    !isAbsolute(configured)
-  )
+  if (configured === undefined || !isAbsolute(configured))
     throw new AnalysisCapabilityUnavailableError(
       "wakaru",
       OPERATION,
@@ -82,16 +89,19 @@ export const resolveWakaruCommand = async (
       command,
       RECOVERY_LIMITS.outputBytes,
     );
-    const limiter =
-      environment.REA_JAVASCRIPT_PRLIMIT_COMMAND ?? "/usr/bin/prlimit";
-    if (!isAbsolute(limiter))
-      throw new TypeError("REA_JAVASCRIPT_PRLIMIT_COMMAND must be absolute");
-    await access(limiter, constants.X_OK);
+    const limiter = (
+      await prepareHostResourceBound({
+        configured: WAKARU_BOUND_LIMITS,
+        prlimitVariable: "REA_JAVASCRIPT_PRLIMIT_COMMAND",
+        environment,
+        readLimits: async (limits) => limits,
+      })
+    ).enforcer;
     if (!(await stat(limiter)).isFile())
       throw new TypeError(`Resource limiter is not a regular file: ${limiter}`);
     return { command, limiter, ...fingerprint };
   } catch (cause: unknown) {
-    const reason = `Configured Wakaru or util-linux prlimit is unavailable: ${recoveryFailureMessage(cause)}`;
+    const reason = `Configured Wakaru or its resource limiter is unavailable: ${recoveryFailureMessage(cause)}`;
     throw new AnalysisCapabilityUnavailableError("wakaru", OPERATION, reason, {
       cause,
       userMessage: reason,
@@ -115,17 +125,13 @@ type WakaruCommandContext = {
 export const runWakaruCommand = async (context: WakaruCommandContext) => {
   checkRecoveryDeadline(context.deadline, context.signal);
   const runId = `rea-wakaru-${randomUUID()}`;
+  const bound = describeHostResourceBound(
+    process.platform,
+    context.limiter,
+    WAKARU_BOUND_LIMITS,
+  );
   const spawned = await (context.launcher ?? spawnOwnedProviderProcess)({
-    command: context.limiter,
-    arguments: [
-      `--as=${String(RECOVERY_LIMITS.addressSpaceBytes)}`,
-      `--fsize=${String(RECOVERY_LIMITS.outputBytes)}`,
-      "--core=0",
-      "--cpu=120",
-      "--",
-      context.command,
-      ...context.arguments,
-    ],
+    ...boundedLaunch(bound, context.command, context.arguments),
     expectedCommand: null,
     runId,
     cwd: context.cwd,
@@ -138,7 +144,7 @@ export const runWakaruCommand = async (context: WakaruCommandContext) => {
     throw new ProviderAdapterError("wakaru", OPERATION, {
       cause,
       diagnostics: {
-        reason: "Failed to launch configured Wakaru through util-linux prlimit",
+        reason: "Failed to launch configured Wakaru under its resource bound",
         command: context.command,
         detail: recoveryFailureMessage(cause),
       },
