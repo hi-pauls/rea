@@ -16,7 +16,10 @@ export interface ToolEffects {
    * count.
    */
   readonly executesForeignCode: boolean;
-  /** Changes an attached Android device: packages, files, or running apps. */
+  /**
+   * Changes an attached device: an Android device's packages, files or running
+   * apps, or an embedded target's execution, memory or flash behind a probe.
+   */
   readonly mutatesDevice: boolean;
   readonly idempotent: boolean;
 }
@@ -83,6 +86,30 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     idempotent: false,
   }),
   gdb_session_status: effects(),
+  start_openocd_session: effects({
+    launchesProcess: true,
+    mutatesSession: true,
+    accessesNetwork: true,
+    mutatesDevice: true,
+    idempotent: false,
+  }),
+  openocd_command: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    accessesNetwork: true,
+    mayDiscardData: true,
+    executesForeignCode: true,
+    mutatesDevice: true,
+    idempotent: false,
+  }),
+  openocd_session_status: effects(),
+  close_openocd_session: effects({
+    launchesProcess: true,
+    mutatesSession: true,
+    accessesNetwork: true,
+    mutatesDevice: true,
+    idempotent: false,
+  }),
   start_rizin_debug_session: effects({
     mutatesTarget: true,
     mutatesSession: true,

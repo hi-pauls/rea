@@ -49,6 +49,8 @@ const SOURCE_PATHS = {
     "dist/contracts/reverseEngineeringToolContracts.js",
   gdbContracts: "dist/contracts/gdbToolContracts.js",
   gdbProvider: "dist/gdb/GdbSessionManager.js",
+  openocdContracts: "dist/contracts/openocdToolContracts.js",
+  openocdProvider: "dist/embedded/OpenOcdSessionManager.js",
   rizinDebugContracts: "dist/contracts/rizinDebugToolContracts.js",
   objdumpProvider: "dist/objdump/ObjdumpCommand.js",
   rizinProvider: "dist/rizin/RizinCommand.js",

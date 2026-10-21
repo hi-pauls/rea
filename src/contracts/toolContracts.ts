@@ -32,6 +32,7 @@ import { SESSION_TOOL_CONTRACTS } from "./sessionToolContracts.js";
 import { CUTTER_TOOL_CONTRACTS } from "./cutterToolContracts.js";
 import { REVERSE_ENGINEERING_TOOL_CONTRACTS } from "./reverseEngineeringToolContracts.js";
 import { GDB_TOOL_CONTRACTS } from "./gdbToolContracts.js";
+import { OPENOCD_TOOL_CONTRACTS } from "./openocdToolContracts.js";
 import { RIZIN_DEBUG_TOOL_CONTRACTS } from "./rizinDebugToolContracts.js";
 import { FRIDA_TOOL_CONTRACTS } from "./fridaToolContracts.js";
 
@@ -71,6 +72,7 @@ export const TOOL_CONTRACTS = [
   ...CUTTER_TOOL_CONTRACTS,
   ...REVERSE_ENGINEERING_TOOL_CONTRACTS,
   ...GDB_TOOL_CONTRACTS,
+  ...OPENOCD_TOOL_CONTRACTS,
   ...RIZIN_DEBUG_TOOL_CONTRACTS,
   ...FRIDA_TOOL_CONTRACTS,
 ] as const;

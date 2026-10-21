@@ -23,6 +23,7 @@ export const toolFamilyCatalog = (sources) => {
         ...sources.reverseEngineeringContracts
           .REVERSE_ENGINEERING_TOOL_CONTRACTS,
         ...sources.gdbContracts.GDB_TOOL_CONTRACTS,
+        ...sources.openocdContracts.OPENOCD_TOOL_CONTRACTS,
         ...sources.rizinDebugContracts.RIZIN_DEBUG_TOOL_CONTRACTS,
       ],
     },
@@ -191,6 +192,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.gdbProvider.GDB_PROVIDER_IDENTITY,
       contracts: sources.gdbContracts.GDB_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.openocdProvider.OPENOCD_PROVIDER_IDENTITY,
+      contracts: sources.openocdContracts.OPENOCD_TOOL_CONTRACTS,
     },
     {
       identity: sources.rizinDebugProvider.RIZIN_DEBUGGER_PROVIDER_IDENTITY,

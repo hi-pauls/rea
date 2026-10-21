@@ -133,6 +133,8 @@ import { CutterBridgeService } from "../cutter/CutterBridgeService.js";
 import { registerCutterTools } from "./registerCutterTools.js";
 import { GdbSessionManager } from "../gdb/GdbSessionManager.js";
 import { registerGdbTools } from "./registerGdbTools.js";
+import { OpenOcdSessionManager } from "../embedded/OpenOcdSessionManager.js";
+import { registerOpenOcdTools } from "./registerOpenOcdTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
 import { registerRizinDebugTools } from "./registerRizinDebugTools.js";
 
@@ -345,6 +347,9 @@ export const createServer = (
     environment: providerEnvironment,
   });
   const rizinDebugSessions = new RizinDebugSessionManager(providerEnvironment);
+  const openOcdSessions = new OpenOcdSessionManager({
+    environment: providerEnvironment,
+  });
   const android =
     options.androidAnalysis ?? createAndroidAnalysisProvider(environment);
   const pcap = options.pcapAnalysis ?? createPcapAnalysisProvider(environment);
@@ -410,6 +415,7 @@ export const createServer = (
       firmwareAnalysis.close(),
       gdbSessions.closeAll(),
       rizinDebugSessions.closeAll(),
+      openOcdSessions.closeAll(),
     ])
       .then((results) => {
         const failures = results.flatMap((result) =>
@@ -511,6 +517,16 @@ export const createServer = (
   registerRizinDebugTools(
     server,
     rizinDebugSessions,
+    toolLogger,
+    delivery,
+    session === undefined
+      ? undefined
+      : (evidence) => session.recordEvidence(evidence),
+    session,
+  );
+  registerOpenOcdTools(
+    server,
+    openOcdSessions,
     toolLogger,
     delivery,
     session === undefined
