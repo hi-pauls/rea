@@ -28,19 +28,39 @@ export const GDB_TOOL_CONTRACTS = [
     ...toolContractMetadata("start_gdb_session"),
     kind: "native-provider",
     description:
-      "Start a BYO GDB process in MI3 mode when available, suppress startup files, and disable auto-loading. Persistent GDB sessions are available only on Linux, where REA can verify live inferior output descriptors through /proc before detaching; macOS descriptor verification is not implemented, and Windows Job Object cleanup can terminate debugger inferiors. Optionally set inferior_tty to a caller-selected terminal for future inferior runs; REA verifies the setting through GDB/MI before the session becomes ready. The selected terminal must remain available after GDB exits. A live inferior can be detached during close only while this durable output sink remains verified. The session persists in this REA MCP server process and receives an explicit session ID.",
+      "Start a BYO GDB process in MI3 mode when available, suppress startup files, and disable auto-loading. Pass remote_target to attach to an existing GDB server, such as the one OpenOCD exposes for an embedded target; a remote session spawns no local inferior and is available on Linux, macOS and Windows. Without remote_target the session spawns local inferiors and is available only on Linux, where REA can verify live inferior output descriptors through /proc before detaching; macOS descriptor verification is not implemented, and Windows Job Object cleanup can terminate debugger inferiors. Optionally set inferior_tty to a caller-selected terminal for future inferior runs; REA verifies the setting through GDB/MI before the session becomes ready. The selected terminal must remain available after GDB exits. A live inferior can be detached during close only while this durable output sink remains verified. Closing a remote session disconnects from the server and never stops the target. The session persists in this REA MCP server process and receives an explicit session ID.",
     inputSchema: z.strictObject({
       inferior_tty: localPathStringSchema
         .optional()
         .describe(
-          "Caller-selected terminal path for future inferior runs. GDB must report the exact configured path before the session is ready.",
+          "Caller-selected terminal path for future inferior runs. GDB must report the exact configured path before the session is ready. Cannot accompany remote_target.",
+        ),
+      remote_target: z
+        .string()
+        .min(1)
+        .regex(/^[\w.:\x2f\\\x2d]+$/u)
+        .optional()
+        .describe(
+          "Attach to an already running GDB server instead of spawning a local inferior: host:port, :port, or a serial device path, without whitespace.",
+        ),
+      debugger: z
+        .enum(["host", "embedded"])
+        .optional()
+        .describe(
+          "Which configured debugger to run: the host GDB from REA_GDB_COMMAND (the default), or the cross debugger for embedded targets from REA_GDB_EMBEDDED_COMMAND.",
         ),
     }),
     outputSchema: z.strictObject({
       session_id: sessionId,
       mi_version: z.enum(["mi3", "mi2"]),
     }),
-    examples: [{ title: "Start GDB", input: {} }],
+    examples: [
+      { title: "Start GDB", input: {} },
+      {
+        title: "Attach to an OpenOCD GDB server with the cross debugger",
+        input: { remote_target: ":3333", debugger: "embedded" },
+      },
+    ],
   },
   {
     name: "gdb_console",

@@ -437,9 +437,23 @@ class GdbProtocolFailureError extends Error {
 export const gdbErrorMessage = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
+interface GdbStartOptions {
+  readonly inferiorTty?: string;
+  readonly remoteTarget?: string;
+  readonly debuggerSelection?: "host" | "embedded";
+}
+
 interface GdbSession {
   readonly id: string;
   readonly miVersion: "mi3" | "mi2";
+  /**
+   * The remote GDB server this session is attached to, when it has one. Such a
+   * session runs no process of its own: execution belongs to the server, so
+   * there are no inferior output descriptors to verify and cleanup ends with a
+   * disconnect. Sessions that do spawn a local inferior keep the full
+   * descriptor verification and its platform requirements.
+   */
+  readonly remoteTarget: string | undefined;
   readonly launched: SpawnedOwnedProviderProcess;
   readonly supervisor: ProviderProcessSupervisor;
   /** Confirms target disposition and any durable sink before process cleanup. */
@@ -489,6 +503,7 @@ export class GdbSessionManager {
     >
   >();
   readonly #command: string;
+  readonly #embeddedCommand: string | undefined;
   readonly #environment: NodeJS.ProcessEnv;
   readonly #commandTimeoutMs: number;
   readonly #startupTimeoutMs: number;
@@ -530,6 +545,7 @@ export class GdbSessionManager {
   ) {
     this.#environment = { ...(options.environment ?? process.env) };
     this.#command = this.#environment.REA_GDB_COMMAND ?? "gdb";
+    this.#embeddedCommand = this.#environment.REA_GDB_EMBEDDED_COMMAND;
     this.#commandTimeoutMs = options.commandTimeoutMs ?? COMMAND_TIMEOUT_MS;
     this.#startupTimeoutMs = options.startupTimeoutMs ?? STARTUP_TIMEOUT_MS;
     this.#platform = options.platform ?? process.platform;
@@ -545,7 +561,7 @@ export class GdbSessionManager {
 
   async start(
     signal?: AbortSignal,
-    options: { readonly inferiorTty?: string } = {},
+    options: GdbStartOptions = {},
   ): Promise<
     Result<
       { readonly session_id: string; readonly mi_version: "mi3" | "mi2" },
@@ -566,16 +582,52 @@ export class GdbSessionManager {
           },
         ]),
       );
+    if (
+      options.remoteTarget !== undefined &&
+      !/^[\w.:/\\-]+$/u.test(options.remoteTarget)
+    )
+      return err(
+        new AnalysisInputError("start_gdb_session", undefined, [
+          {
+            path: ["remote_target"],
+            reason: "invalid_value",
+            message:
+              "The remote target must be host:port, :port, or a serial device path, without whitespace.",
+          },
+        ]),
+      );
+    if (options.remoteTarget !== undefined && options.inferiorTty !== undefined)
+      return err(
+        new AnalysisInputError("start_gdb_session", undefined, [
+          {
+            path: ["inferior_tty"],
+            reason: "invalid_value",
+            message:
+              "A remote session runs no local inferior, so inferior_tty cannot accompany remote_target.",
+          },
+        ]),
+      );
     if (this.#closing || signal?.aborted)
       return err(new AnalysisCancelledError("start_gdb_session"));
-    if (this.#platform !== "linux")
+    if (
+      options.debuggerSelection === "embedded" &&
+      this.#embeddedCommand === undefined
+    )
+      return err(
+        new AnalysisCapabilityUnavailableError(
+          "gdb",
+          "start_gdb_session",
+          "No embedded debugger is configured; set REA_GDB_EMBEDDED_COMMAND to a cross-GDB executable such as arm-none-eabi-gdb.",
+        ),
+      );
+    if (options.remoteTarget === undefined && this.#platform !== "linux")
       return err(
         new AnalysisCapabilityUnavailableError(
           "gdb",
           "start_gdb_session",
           this.#platform === "win32"
-            ? "Persistent Windows GDB sessions are unavailable because owned Job Object cleanup can terminate debugger inferiors."
-            : "Persistent GDB sessions are available only on Linux because REA verifies live inferior output descriptors through /proc.",
+            ? "A GDB session that spawns a local inferior is unavailable on Windows because owned Job Object cleanup can terminate debugger inferiors; pass remote_target to debug through a GDB server instead."
+            : "A GDB session that spawns a local inferior requires Linux, where REA verifies live inferior output descriptors through /proc; pass remote_target to debug through a GDB server instead.",
         ),
       );
     const controller = new AbortController();
@@ -594,7 +646,7 @@ export class GdbSessionManager {
 
   async #startWithReservation(
     signal: AbortSignal,
-    options: { readonly inferiorTty?: string } = {},
+    options: GdbStartOptions = {},
   ): Promise<
     Result<
       { readonly session_id: string; readonly mi_version: "mi3" | "mi2" },
@@ -633,7 +685,7 @@ export class GdbSessionManager {
   async #startReserved(
     releaseReservation: () => void,
     signal: AbortSignal,
-    options: { readonly inferiorTty?: string } = {},
+    options: GdbStartOptions = {},
   ): Promise<
     Result<
       { readonly session_id: string; readonly mi_version: "mi3" | "mi2" },
@@ -646,17 +698,11 @@ export class GdbSessionManager {
       "mi3",
       releaseReservation,
       signal,
-      options.inferiorTty,
+      options,
     );
     return mi3.ok || signal.aborted || this.#sessions.has(id)
       ? mi3
-      : this.#startProtocol(
-          id,
-          "mi2",
-          releaseReservation,
-          signal,
-          options.inferiorTty,
-        );
+      : this.#startProtocol(id, "mi2", releaseReservation, signal, options);
   }
 
   async #startProtocol(
@@ -664,17 +710,22 @@ export class GdbSessionManager {
     miVersion: "mi3" | "mi2",
     releaseReservation: () => void,
     signal: AbortSignal,
-    inferiorTty?: string,
+    options: GdbStartOptions = {},
   ): Promise<
     Result<
       { readonly session_id: string; readonly mi_version: "mi3" | "mi2" },
       AnalysisError
     >
   > {
+    const { inferiorTty, remoteTarget } = options;
     let launched: SpawnedOwnedProviderProcess;
     try {
       const spawnOptions: OwnedProviderProcessSpawnOptions = {
-        command: this.#command,
+        command:
+          options.debuggerSelection === "embedded" &&
+          this.#embeddedCommand !== undefined
+            ? this.#embeddedCommand
+            : this.#command,
         arguments: ["--nx", "--quiet", `--interpreter=${miVersion}`],
         runId: randomUUID(),
         stdin: "pipe",
@@ -718,6 +769,7 @@ export class GdbSessionManager {
       },
       knownInferiorIdentities: new Map(),
       inferiorTty,
+      remoteTarget,
       maxCommandOutputBytes: this.#maxCommandOutputBytes,
       stdoutSettled,
       settleStdout,
@@ -857,6 +909,23 @@ export class GdbSessionManager {
             "GDB did not report the exact caller-selected inferior TTY after configuration.",
           );
         session.inferiorTtyVerified = true;
+      }
+      if (remoteTarget !== undefined) {
+        const connected = await this.#request(
+          session,
+          `-target-select extended-remote ${remoteTarget}`,
+          signal,
+          "start_gdb_session",
+        );
+        if (
+          connected.completion_status !== "complete" ||
+          !/^\d+\^connected(?:,|$)/u.test(connected.mi)
+        )
+          throw new AnalysisCapabilityUnavailableError(
+            "gdb",
+            "start_gdb_session",
+            `GDB did not connect to the remote target ${remoteTarget} (${connected.mi}).`,
+          );
       }
       if (signal?.aborted)
         throw new AnalysisCancelledError("start_gdb_session");
@@ -1314,7 +1383,15 @@ export class GdbSessionManager {
               throw new Error(
                 "GDB returned an unknown inferior list before shutdown.",
               );
-            if (groupCount > 0 && !session.inferiorTtyVerified)
+            if (session.remoteTarget !== undefined) {
+              // Execution belongs to the remote server. Disconnecting leaves
+              // the target as it was, so cleanup reports an unknown target
+              // state rather than claiming the target ended.
+              await this.#request(session, "-target-disconnect");
+              await this.#request(session, "-gdb-exit");
+              session.noInferiorVerified = true;
+              targetState = "unknown";
+            } else if (groupCount > 0 && !session.inferiorTtyVerified)
               return err(
                 new AnalysisCapabilityUnavailableError(
                   GDB_PROVIDER_IDENTITY.id,
@@ -1329,7 +1406,7 @@ export class GdbSessionManager {
                   },
                 ),
               );
-            if (groupCount === 0) {
+            else if (groupCount === 0) {
               session.noInferiorVerified = true;
               targetState = "none_observed";
               await this.#request(session, "-gdb-exit");
@@ -1722,6 +1799,9 @@ export class GdbSessionManager {
     session: GdbSession,
   ): Promise<OwnedDebuggerDetachResult> {
     if (session.noInferiorVerified) return { status: "no-inferior" };
+    // Execution on a remote target belongs to its server, so there is no local
+    // inferior for REA to detach or kill, and nothing to verify through /proc.
+    if (session.remoteTarget !== undefined) return { status: "no-inferior" };
     if (session.exited)
       throw new Error("GDB exited before inferior state could be verified.");
     // A new MI inspection replaces the old snapshot. If this read is

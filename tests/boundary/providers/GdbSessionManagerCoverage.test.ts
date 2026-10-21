@@ -173,7 +173,9 @@ it("rejects an invalid caller TTY and platforms without safe GDB ownership", asy
     error: { _tag: "AnalysisCapabilityUnavailableError" },
   });
   if (!macUnavailable.ok)
-    expect(macUnavailable.error.message).toContain("available only on Linux");
+    expect(macUnavailable.error.message).toContain(
+      "local inferior requires Linux",
+    );
   expect(macSpawned).toBe(false);
 
   const windows = new GdbSessionManager({ platform: "win32" });

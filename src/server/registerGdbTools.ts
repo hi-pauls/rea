@@ -39,12 +39,17 @@ export const registerGdbTools = (
     toolRegistrationOptions(start),
     async (input, context: ServerContext) => {
       const result = await logToolExecution(logger, start.name, () =>
-        manager.start(
-          context.mcpReq.signal,
-          input.inferior_tty === undefined
+        manager.start(context.mcpReq.signal, {
+          ...(input.inferior_tty === undefined
             ? {}
-            : { inferiorTty: input.inferior_tty },
-        ),
+            : { inferiorTty: input.inferior_tty }),
+          ...(input.remote_target === undefined
+            ? {}
+            : { remoteTarget: input.remote_target }),
+          ...(input.debugger === undefined
+            ? {}
+            : { debuggerSelection: input.debugger }),
+        }),
       );
       if (result.ok)
         return delivery.toCallToolResult(
