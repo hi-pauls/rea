@@ -18,6 +18,10 @@ import {
   type SpawnedOwnedProviderProcess,
 } from "../process/ProviderProcess.js";
 import { cleanupOwnedProcessGroup } from "../process/ProcessOwnership.js";
+import {
+  boundedLaunch,
+  prepareHostResourceBound,
+} from "../process/HostResourceBound.js";
 import { FIRMWARE_LIMITS } from "./FirmwareRelease.js";
 import {
   FirmwareFileAccess,
@@ -50,15 +54,11 @@ export const resolveFirmwareCommand = async (
   const variable =
     engine === "binwalk" ? "REA_BINWALK_COMMAND" : "REA_UNBLOB_COMMAND";
   const configured = environment[variable];
-  if (
-    process.platform !== "linux" ||
-    configured === undefined ||
-    !isAbsolute(configured)
-  )
+  if (configured === undefined || !isAbsolute(configured))
     throw firmwareToolUnavailable(
       engine,
       operation,
-      `This integration requires Linux and an absolute ${variable} path to the caller-supplied tool`,
+      `This integration requires an absolute ${variable} path to the caller-supplied tool`,
     );
   const command = await realpath(configured).catch((cause: unknown) => {
     throw firmwareToolUnavailable(
@@ -81,27 +81,37 @@ export const resolveFirmwareCommand = async (
       `${variable} is not a readable executable regular file: ${command}: ${cause instanceof Error ? cause.message : String(cause)}`,
     );
   }
-  const limiter =
-    environment.REA_FIRMWARE_PRLIMIT_COMMAND ?? "/usr/bin/prlimit";
-  if (!isAbsolute(limiter))
-    throw firmwareToolUnavailable(
-      engine,
-      operation,
-      "REA_FIRMWARE_PRLIMIT_COMMAND must be absolute",
-    );
-  try {
-    await access(limiter, constants.X_OK);
-    if (!(await stat(limiter)).isFile())
-      throw new TypeError("Configured path is not a regular file");
-  } catch (cause: unknown) {
-    throw firmwareToolUnavailable(
-      engine,
-      operation,
-      `Resource limiter is not an executable regular file: ${limiter}: ${cause instanceof Error ? cause.message : String(cause)}; provide util-linux prlimit`,
-    );
-  }
-  return { command, limiter, sha256 };
+  const bound = await firmwareBound(environment, FIRMWARE_LIMITS.reportBytes)
+    .then(async (prepared) => {
+      if (!(await stat(prepared.enforcer)).isFile())
+        throw new TypeError("Configured path is not a regular file");
+      return prepared;
+    })
+    .catch((cause: unknown) => {
+      throw firmwareToolUnavailable(
+        engine,
+        operation,
+        `Resource limiter is unavailable: ${cause instanceof Error ? cause.message : String(cause)}; on Linux provide util-linux prlimit`,
+      );
+    });
+  return { command, limiter: bound.enforcer, sha256 };
 };
+
+/** The engine's bound, matching the fixed prlimit profile it had on Linux. */
+const firmwareBound = (
+  environment: Readonly<Record<string, string | undefined>>,
+  fileBytes: number,
+) =>
+  prepareHostResourceBound({
+    configured: {
+      address_space_bytes: FIRMWARE_LIMITS.addressSpaceBytes,
+      file_bytes: fileBytes,
+      cpu_seconds: 120,
+    },
+    prlimitVariable: "REA_FIRMWARE_PRLIMIT_COMMAND",
+    environment,
+    readLimits: async (limits) => limits,
+  });
 
 /** Execute one bounded provider command and verify its owned descendants have stopped. */
 export const runFirmwareCommand = async (context: {
@@ -122,17 +132,18 @@ export const runFirmwareCommand = async (context: {
   if (signal.aborted)
     throw new AnalysisCancelledError(operation, { cause: signal.reason });
   const runId = `rea-firmware-${randomUUID()}`;
+  const bound = await firmwareBound(
+    context.environment,
+    context.outputBudget?.bytes ?? FIRMWARE_LIMITS.reportBytes,
+  );
+  if (bound.enforcer !== context.limiter)
+    throw new AnalysisCapabilityUnavailableError(
+      engine,
+      operation,
+      `Resource limiter changed from ${context.limiter} to ${bound.enforcer}`,
+    );
   const spawned = await (context.launcher ?? spawnOwnedProviderProcess)({
-    command: context.limiter,
-    arguments: [
-      `--as=${FIRMWARE_LIMITS.addressSpaceBytes}`,
-      `--fsize=${context.outputBudget?.bytes ?? FIRMWARE_LIMITS.reportBytes}`,
-      "--core=0",
-      "--cpu=120",
-      "--",
-      context.command,
-      ...context.args,
-    ],
+    ...boundedLaunch(bound, context.command, context.args),
     expectedCommand: null,
     runId,
     cwd: context.cwd,
