@@ -62,7 +62,9 @@ import {
 import { pwntoolsInputBytes } from "./PwntoolsInputLimit.js";
 
 const HOST_REQUIREMENT =
-  "The initial real-verified pwntools artifact profile supports Linux x64 only.";
+  "The pwntools artifact profile runs on Linux, macOS and Windows hosts only.";
+// Linux and macOS lower RLIMIT_AS in the bridge; Windows and macOS also bound the tree here.
+const PWNTOOLS_MEMORY_LIMIT_BYTES = 3 * 1024 ** 3;
 
 /** Owned launcher seam shared by the offline pwntools artifact adapters. */
 export type PwntoolsLauncher = NonNullable<
@@ -250,7 +252,7 @@ export class PwntoolsDecoder<
         throw new AnalysisCancelledError(OPERATION, {
           cause: options.signal.reason,
         });
-      if (process.platform !== "linux" || process.arch !== "x64")
+      if (!["linux", "darwin", "win32"].includes(process.platform))
         throw new AnalysisCapabilityUnavailableError(
           this.identity.id,
           OPERATION,
@@ -540,6 +542,10 @@ export class PwntoolsDecoder<
             // including the optional Python-to-GDB handoff. Preserve explicit
             // pins; otherwise keep parent/group/run-token proof across exec.
             expectedCommand: spawn.expectedCommand ?? null,
+            ...(process.platform === "linux" ||
+            spawn.memoryLimitBytes !== undefined
+              ? {}
+              : { memoryLimitBytes: PWNTOOLS_MEMORY_LIMIT_BYTES }),
           },
           {
             timeoutMs: PWNTOOLS_LIMITS.timeoutMs,

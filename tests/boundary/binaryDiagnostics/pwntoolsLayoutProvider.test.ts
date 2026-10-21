@@ -15,13 +15,16 @@ import { cleanupOwnedProcessGroup } from "../../../src/process/ProcessOwnership.
 import { binaryLayoutFixture } from "../../fixtures/binaryDiagnostics/layout.js";
 import { projectAnalysisError } from "../../../src/domain/analysisErrorProjection.js";
 
-const unsupportedHost = process.platform !== "linux" || process.arch !== "x64";
+const linuxHost = process.platform === "linux" && process.arch === "x64";
+const unsupportedHost = !["linux", "darwin", "win32"].includes(
+  process.platform,
+);
 const requestSchema = z.strictObject({
   snapshot_path: z.string(),
   reply_path: z.string(),
 });
 
-it.runIf(!unsupportedHost).each([
+it.runIf(linuxHost).each([
   ["SIGXCPU", "reported", "cpu"],
   ["SIGXCPU", "missing", "cpu"],
   ["SIGXCPU", "malformed", "cpu"],
@@ -90,7 +93,7 @@ it.runIf(!unsupportedHost).each([
   },
 );
 
-it.runIf(!unsupportedHost)(
+it.runIf(linuxHost)(
   "retains actual diagnostic truncation when output overflow and process cleanup both fail",
   async () => {
     const { path } = await fixture();
@@ -144,7 +147,7 @@ it.runIf(!unsupportedHost)(
 );
 
 it
-  .runIf(!unsupportedHost)
+  .runIf(linuxHost)
   .each([
     "reserved-memory-status",
     "unmarked-memory-status",
@@ -201,7 +204,7 @@ it
   },
 );
 
-it.runIf(!unsupportedHost).each([1048576, 1048577])(
+it.runIf(linuxHost).each([1048576, 1048577])(
   "keeps complete diagnostics or fails explicitly when a valid reply emits %s bytes",
   async (bytes) => {
     const { path } = await fixture();
@@ -255,7 +258,7 @@ it.runIf(!unsupportedHost).each([1048576, 1048577])(
   },
 );
 
-it.runIf(!unsupportedHost).each([
+it.runIf(linuxHost).each([
   null,
   {
     address_space_bytes: 67108864,
@@ -314,7 +317,7 @@ it.runIf(!unsupportedHost).each([
   },
 );
 
-it.runIf(!unsupportedHost).each(["cancelled", "output-limit", "process"])(
+it.runIf(linuxHost).each(["cancelled", "output-limit", "process"])(
   "releases an acquired decoder and its snapshot after %s",
   async (scenario) => {
     const { path } = await fixture();
@@ -376,7 +379,7 @@ it.runIf(!unsupportedHost).each(["cancelled", "output-limit", "process"])(
   },
 );
 
-it.runIf(!unsupportedHost)(
+it.runIf(linuxHost)(
   "reports private storage denial as an adapter failure rather than selected-input read denial",
   async () => {
     const { path } = await fixture();
@@ -398,7 +401,7 @@ it.runIf(!unsupportedHost)(
   },
 );
 
-it.runIf(!unsupportedHost)(
+it.runIf(linuxHost)(
   "preserves a decoder failure when private-root cleanup also fails",
   async () => {
     const { path, root } = await fixture();
@@ -454,7 +457,7 @@ const fixture = async () => {
   return { root, path };
 };
 
-it.runIf(!unsupportedHost)(
+it.runIf(linuxHost)(
   "preserves cancellation during the actual signal-aware snapshot write and closes its acquired root",
   async () => {
     const { path } = await fixture();
@@ -482,7 +485,7 @@ it.runIf(!unsupportedHost)(
 );
 
 it
-  .runIf(!unsupportedHost)
+  .runIf(linuxHost)
   .each([
     "success",
     "format",
@@ -584,7 +587,7 @@ it
   },
 );
 
-it.runIf(!unsupportedHost)(
+it.runIf(linuxHost)(
   "rejects missing configuration, absent input and prelaunch cancellation distinctly",
   async () => {
     const { path } = await fixture();
@@ -621,12 +624,12 @@ it.runIf(unsupportedHost)(
     // Another target cannot satisfy a host requirement, so name it.
     if (result.ok) throw new Error("Expected a host refusal");
     const projected = projectAnalysisError(result.error);
-    expect(projected.message).toContain("Linux x64");
-    expect(projected.remediation.action).toContain("Linux x64");
+    expect(projected.message).toContain("Linux, macOS and Windows");
+    expect(projected.remediation.action).toContain("Linux, macOS and Windows");
   },
 );
 
-it.runIf(!unsupportedHost)(
+it.runIf(linuxHost)(
   "retains decoder warnings when cancellation arrives during successful root cleanup",
   async () => {
     const { path } = await fixture();
@@ -689,7 +692,7 @@ it.runIf(!unsupportedHost)(
   },
 );
 
-it.runIf(!unsupportedHost).each(["directory", "missing-interpreter"])(
+it.runIf(linuxHost).each(["directory", "missing-interpreter"])(
   "identifies the configured executable on actual launch/preflight failure: %s",
   async (scenario) => {
     const { path, root } = await fixture();

@@ -2,18 +2,27 @@
 import json
 import os
 from pathlib import Path
-import resource
 import sys
 
+try:
+    import resource
+except ImportError:
+    # Windows has no rlimits; REA bounds the process tree with a Job Object instead.
+    resource = None
+
 OUTPUT_BYTES = 64 * 1024 * 1024
+MAXIMA = (
+    ("address_space_bytes", "RLIMIT_AS", 3 * 1024**3),
+    ("cpu_seconds", "RLIMIT_CPU", 30),
+    ("file_size_bytes", "RLIMIT_FSIZE", OUTPUT_BYTES),
+)
 
 def lower_resource_limits():
+    if resource is None:
+        return {name: maximum for name, _, maximum in MAXIMA}
     limits = {}
-    for name, kind, maximum in (
-        ("address_space_bytes", resource.RLIMIT_AS, 3 * 1024**3),
-        ("cpu_seconds", resource.RLIMIT_CPU, 30),
-        ("file_size_bytes", resource.RLIMIT_FSIZE, OUTPUT_BYTES),
-    ):
+    for name, kind_name, maximum in MAXIMA:
+        kind = getattr(resource, kind_name)
         soft, hard = resource.getrlimit(kind)
         finite = [maximum] + [value for value in (soft, hard) if value != resource.RLIM_INFINITY]
         effective = min(finite)
