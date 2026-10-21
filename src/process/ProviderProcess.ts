@@ -4,6 +4,8 @@ import type { Readable, Writable } from "node:stream";
 
 import { WindowsOwnedProcess } from "../windows/WindowsOwnedProcess.js";
 
+import { watchDarwinProcessGroupMemory } from "./DarwinMemoryWatchdog.js";
+
 import type {
   OwnedProcessGroup,
   ProcessOwnershipBaseline,
@@ -38,8 +40,9 @@ export interface OwnedProviderProcessSpawnOptions {
   /** Opt into a writable protocol stream; other providers retain ignored stdin. */
   readonly stdin?: "pipe";
   /**
-   * Commit limit in bytes for the whole owned process tree, enforced by its
-   * Windows Job Object. Other launchers cannot enforce it and refuse it.
+   * Memory limit in bytes for the whole owned process tree: committed memory
+   * under its Windows Job Object, sampled resident memory of its process group
+   * on macOS. Other launchers cannot enforce it and refuse it.
    */
   readonly memoryLimitBytes?: number;
   /** Sweep exact run-token descendants during POSIX cleanup. */
@@ -257,9 +260,10 @@ export const spawnOwnedProviderProcess = async (
       cleanup: () => child.cleanup(),
     };
   }
-  if (options.memoryLimitBytes !== undefined)
+  const darwinWatchdog = platform === "darwin" && process.platform === "darwin";
+  if (options.memoryLimitBytes !== undefined && !darwinWatchdog)
     throw new Error(
-      "Owned process memory limits require the Windows Job Object launcher; no limit can be enforced on this host.",
+      "Owned process memory limits require the Windows Job Object launcher or the macOS resident-memory watchdog; no limit can be enforced on this host.",
     );
   const child = spawn(options.command, [...options.arguments], {
     shell: false,
@@ -273,6 +277,8 @@ export const spawnOwnedProviderProcess = async (
   await waitForSpawn(child);
   const pid = child.pid;
   if (pid === undefined) throw new Error("Provider launcher has no process ID");
+  if (options.memoryLimitBytes !== undefined)
+    watchDarwinProcessGroupMemory(child, pid, options.memoryLimitBytes);
   const ownership: OwnedProcessGroup = {
     runId: options.runId,
     leaderPid: pid,

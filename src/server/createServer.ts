@@ -192,23 +192,21 @@ const installSessionToolAvailability = (
   fridaInstrumentation: FridaInstrumentationPort,
 ) => {
   if (session === undefined) return undefined;
-  const linux = process.platform === "linux";
-  const linuxX64 = linux && process.arch === "x64";
-  const pwntools =
-    linuxX64 && isAbsolute(environment.REA_PWNTOOLS_PYTHON ?? "");
+  const bounded = ["linux", "darwin", "win32"].includes(process.platform);
+  const pwntools = bounded && isAbsolute(environment.REA_PWNTOOLS_PYTHON ?? "");
   const basePolicy = sessionAvailabilityPolicy(options.availabilityPolicy, {
     optionalProviderLoadFailures: options.optionalProviderLoadFailures,
     optionalFeatures: {
       packetCaptureEnabled:
         options.packetCapture !== undefined ||
-        (linux && isAbsolute(environment.REA_TSHARK_COMMAND ?? "")),
+        (bounded && isAbsolute(environment.REA_TSHARK_COMMAND ?? "")),
       signalRecordingEnabled:
         options.signalRecording !== undefined ||
-        (linux && isAbsolute(environment.REA_SIGROK_COMMAND ?? "")),
+        (bounded && isAbsolute(environment.REA_SIGROK_COMMAND ?? "")),
       wasmArtifactEnabled:
         options.wasmArtifact !== undefined ||
         isAbsolute(environment.REA_WABT_BIN_DIRECTORY ?? ""),
-      evmInterfaceEnabled: options.evmInterface !== undefined || linuxX64,
+      evmInterfaceEnabled: options.evmInterface !== undefined || bounded,
       webModuleResolutionEnabled:
         options.webModuleTrace !== undefined ||
         isAbsolute(environment.REA_BROWSER_EXECUTABLE ?? ""),
@@ -216,14 +214,14 @@ const installSessionToolAvailability = (
       binaryLayoutEnabled: options.binaryLayout !== undefined || pwntools,
       firmwareInspectionEnabled:
         options.firmwareAnalysis !== undefined ||
-        (linux && isAbsolute(environment.REA_BINWALK_COMMAND ?? "")),
+        (bounded && isAbsolute(environment.REA_BINWALK_COMMAND ?? "")),
       firmwareExtractionEnabled:
         options.firmwareAnalysis !== undefined ||
-        (linux && isAbsolute(environment.REA_UNBLOB_COMMAND ?? "")),
+        (bounded && isAbsolute(environment.REA_UNBLOB_COMMAND ?? "")),
       browserObservationEnabled: options.browserObservation !== undefined,
       javascriptRecoveryEnabled:
         options.javascriptRecovery !== undefined ||
-        (linuxX64 && isAbsolute(environment.REA_WAKARU_COMMAND ?? "")),
+        (bounded && isAbsolute(environment.REA_WAKARU_COMMAND ?? "")),
       browserScenarioEnabled: options.browserScenarioCapture !== undefined,
       electronObservationEnabled: options.electronObservation !== undefined,
       electronAutomationEnabled:

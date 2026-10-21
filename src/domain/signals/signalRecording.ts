@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { localPathStringSchema } from "../localPath.js";
+import { resourceLimiterSchema } from "../resourceLimiter.js";
 import { windowAnnotationText } from "./annotationTextWindow.js";
 
 // These strings are single sigrok arguments, never shell fragments.
@@ -108,12 +109,7 @@ export const signalRecordingSchema = z
       version_diagnostics: z.string(),
       arguments: z.array(z.string()),
     }),
-    resource_limiter: z.strictObject({
-      configured_path: z.string(),
-      path: z.string(),
-      sha256: z.string().regex(/^[a-f0-9]{64}$/),
-      arguments: z.array(z.string()),
-    }),
+    resource_limiter: resourceLimiterSchema,
     limits: z.strictObject({
       input_bytes: z.number().int().positive(),
       output_bytes: z.number().int().positive(),
