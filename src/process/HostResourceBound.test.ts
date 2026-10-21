@@ -65,7 +65,7 @@ describe("prepareHostResourceBound", () => {
       const bound = await prepareHostResourceBound(request("darwin"));
       expect(bound.mechanism).toBe("darwin-ulimit-rss-watchdog");
       const launch = boundedLaunch(bound, "/tool", ["-v"]);
-      expect(launch.arguments.slice(3)).toEqual([
+      expect(launch.arguments.slice(2)).toEqual([
         "rea-limit",
         "30",
         String(65536),
