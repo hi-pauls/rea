@@ -17,7 +17,10 @@ import {
   removeTestWorkspace,
 } from "../../support/workspace/workspaceFixture.js";
 
-const unsupportedHost = process.platform !== "linux" || process.arch !== "x64";
+const linuxHost = process.platform === "linux" && process.arch === "x64";
+const unsupportedHost = !["linux", "darwin", "win32"].includes(
+  process.platform,
+);
 const requestSchema = z.strictObject({
   snapshot_path: z.string(),
   reply_path: z.string(),
@@ -42,12 +45,12 @@ it.runIf(unsupportedHost)(
     if (result.ok) throw new Error("Expected a host refusal");
     const projected = projectAnalysisError(result.error);
     expect(projected).toMatchObject({ code: "capability_unavailable" });
-    expect(projected.message).toContain("Linux x64");
-    expect(projected.remediation.action).toContain("Linux x64");
+    expect(projected.message).toContain("host resource bound");
+    expect(projected.remediation.action).toContain("host resource bound");
   },
 );
 
-it.runIf(!unsupportedHost).each(["SIGXCPU", "SIGXFSZ", "EFBIG"])(
+it.runIf(linuxHost).each(["SIGXCPU", "SIGXFSZ", "EFBIG"])(
   "preserves %s with configured limits distinct from unknown effective limits",
   async (failure) => {
     const { path } = await fixture();
@@ -89,7 +92,7 @@ it.runIf(!unsupportedHost).each(["SIGXCPU", "SIGXFSZ", "EFBIG"])(
   },
 );
 
-it.runIf(!unsupportedHost).each(["missing", "wrong"])(
+it.runIf(linuxHost).each(["missing", "wrong"])(
   "does not classify a launcher exit 76 with %s worker failure evidence",
   async (scenario) => {
     const { path } = await fixture();
@@ -126,7 +129,7 @@ it.runIf(!unsupportedHost).each(["missing", "wrong"])(
   },
 );
 
-it.runIf(!unsupportedHost)(
+it.runIf(linuxHost)(
   "retains actual diagnostic truncation when overflow and process cleanup both fail",
   async () => {
     const { path } = await fixture();
@@ -201,7 +204,7 @@ it.runIf(!unsupportedHost)(
   },
 );
 
-it.runIf(!unsupportedHost).each(["completed", "malformed-reply"] as const)(
+it.runIf(linuxHost).each(["completed", "malformed-reply"] as const)(
   "retains worker facts or its primary reply failure while process cleanup is unresolved: %s",
   async (scenario) => {
     const { path } = await fixture();
@@ -287,7 +290,7 @@ it.runIf(!unsupportedHost).each(["completed", "malformed-reply"] as const)(
   },
 );
 
-it.runIf(!unsupportedHost).each([1048576, 1048577])(
+it.runIf(linuxHost).each([1048576, 1048577])(
   "keeps complete diagnostics or rejects a valid worker reply with %s diagnostic bytes",
   async (size) => {
     const { path } = await fixture();
@@ -338,7 +341,7 @@ it.runIf(!unsupportedHost).each([1048576, 1048577])(
 );
 
 it
-  .runIf(!unsupportedHost)
+  .runIf(linuxHost)
   .each([
     "success",
     "format",
@@ -449,7 +452,7 @@ it
   },
 );
 
-it.runIf(!unsupportedHost).each(["cancelled", "output-limit", "process"])(
+it.runIf(linuxHost).each(["cancelled", "output-limit", "process"])(
   "preserves lifecycle failure and independently releases an acquired worker: %s",
   async (scenario) => {
     const { path } = await fixture();
@@ -500,7 +503,7 @@ it.runIf(!unsupportedHost).each(["cancelled", "output-limit", "process"])(
   },
 );
 
-it.runIf(!unsupportedHost)(
+it.runIf(linuxHost)(
   "distinguishes unavailable limiter, absent carrier and prelaunch cancellation",
   async () => {
     const { path } = await fixture();
@@ -543,7 +546,7 @@ it.runIf(unsupportedHost)(
   },
 );
 
-it.runIf(!unsupportedHost)(
+it.runIf(linuxHost)(
   "preserves actual snapshot-write cancellation and root cleanup",
   async () => {
     const { path } = await fixture();
@@ -573,7 +576,7 @@ it.runIf(!unsupportedHost)(
   },
 );
 
-it.runIf(!unsupportedHost)(
+it.runIf(linuxHost)(
   "reports private storage denial without claiming selected carrier read denial",
   async () => {
     const { path } = await fixture();
@@ -592,7 +595,7 @@ it.runIf(!unsupportedHost)(
   },
 );
 
-it.runIf(!unsupportedHost)(
+it.runIf(linuxHost)(
   "retains original format failure when owned-root cleanup fails",
   async () => {
     const { path, root } = await fixture();
@@ -639,7 +642,7 @@ it.runIf(!unsupportedHost)(
 );
 
 it
-  .runIf(!unsupportedHost)
+  .runIf(linuxHost)
   .each([
     "success",
     "late-cancellation",
@@ -755,7 +758,7 @@ it
   },
 );
 
-it.runIf(!unsupportedHost).each(["directory", "missing-interpreter"])(
+it.runIf(linuxHost).each(["directory", "missing-interpreter"])(
   "identifies configured limiter constraints without blaming the carrier: %s",
   async (scenario) => {
     const { path, root } = await fixture();

@@ -60,10 +60,15 @@ import {
   selectEvmWorkerLimits,
   type EvmWorkerLimits,
 } from "./EvmWorkerLimits.js";
+import {
+  boundedLaunch,
+  prepareHostResourceBound,
+  type HostResourceBound,
+} from "../process/HostResourceBound.js";
 
 const OPERATION = "inspect_evm_interface";
 const HOST_REQUIREMENT =
-  "Initial real-verified offline EVM interface profile supports Linux x64 only.";
+  "Offline EVM interface inspection needs a host resource bound: Linux prlimit, macOS ulimit with the resident-memory watchdog, or a Windows Job Object.";
 const replySchema = z.discriminatedUnion("ok", [
   z.strictObject({
     ok: z.literal(true),
@@ -186,6 +191,7 @@ export class EvmoleInterfaceProvider implements EvmInterfacePort {
     let retainedOutput: AnalysisCapturedOutput | undefined;
     let phase: "configuration" | "artifact-read" | "worker" = "configuration";
     let workerLimits: EvmWorkerLimits | undefined;
+    let bound: HostResourceBound | undefined;
     const limiter =
       this.environment.REA_EVM_PRLIMIT_COMMAND ?? "/usr/bin/prlimit";
     let result: Result<EvmInterfaceExecution, AnalysisError>;
@@ -194,53 +200,72 @@ export class EvmoleInterfaceProvider implements EvmInterfacePort {
         throw new AnalysisCancelledError(OPERATION, {
           cause: options.signal.reason,
         });
-      if (process.platform !== "linux" || process.arch !== "x64")
-        throw new AnalysisCapabilityUnavailableError(
-          EVMOLE_PROVIDER_IDENTITY.id,
-          OPERATION,
-          HOST_REQUIREMENT,
-          { userMessage: HOST_REQUIREMENT },
-        );
-      try {
-        if (!isAbsolute(limiter))
-          throw new Error(
-            "REA_EVM_PRLIMIT_COMMAND must be an absolute executable path.",
+      if (process.platform !== "linux") {
+        bound = await prepareHostResourceBound({
+          configured: {
+            address_space_bytes: EVM_INTERFACE_LIMITS.addressSpaceBytes,
+            file_bytes: EVM_INTERFACE_LIMITS.outputBytes,
+            cpu_seconds: 30,
+          },
+          prlimitVariable: "REA_EVM_PRLIMIT_COMMAND",
+          environment: this.environment,
+          readLimits: async (limits) => limits,
+        }).catch((cause: unknown) => {
+          const reason = `${HOST_REQUIREMENT} ${cause instanceof Error ? cause.message : String(cause)}`;
+          throw new AnalysisCapabilityUnavailableError(
+            EVMOLE_PROVIDER_IDENTITY.id,
+            OPERATION,
+            reason,
+            { cause, userMessage: reason },
           );
-        await access(limiter, constants.X_OK);
-        if (!(await stat(limiter)).isFile())
-          throw new Error(
-            "Configured prlimit must be a regular executable file, not a directory.",
+        });
+        workerLimits = {
+          addressSpaceBytes: bound.limits.address_space_bytes,
+          cpuSeconds: bound.limits.cpu_seconds,
+          fileSizeBytes: bound.limits.file_bytes,
+        };
+      } else {
+        try {
+          if (!isAbsolute(limiter))
+            throw new Error(
+              "REA_EVM_PRLIMIT_COMMAND must be an absolute executable path.",
+            );
+          await access(limiter, constants.X_OK);
+          if (!(await stat(limiter)).isFile())
+            throw new Error(
+              "Configured prlimit must be a regular executable file, not a directory.",
+            );
+        } catch (cause: unknown) {
+          const reason = `Offline EVM interface inspection requires caller-supplied util-linux prlimit: ${limiter}; ${cause instanceof Error ? cause.message : String(cause)}`;
+          throw new AnalysisCapabilityUnavailableError(
+            EVMOLE_PROVIDER_IDENTITY.id,
+            OPERATION,
+            reason,
+            { cause, userMessage: reason },
           );
-      } catch (cause: unknown) {
-        const reason = `Offline EVM interface inspection requires caller-supplied util-linux prlimit: ${limiter}; ${cause instanceof Error ? cause.message : String(cause)}`;
-        throw new AnalysisCapabilityUnavailableError(
-          EVMOLE_PROVIDER_IDENTITY.id,
-          OPERATION,
-          reason,
-          { cause, userMessage: reason },
-        );
+        }
+        let inheritedLimits: string;
+        try {
+          inheritedLimits = await readFile("/proc/self/limits", "utf8");
+        } catch (cause: unknown) {
+          const reason = `Could not read inherited Linux resource limits at /proc/self/limits: ${cause instanceof Error ? cause.message : String(cause)}`;
+          throw new AnalysisCapabilityUnavailableError(
+            EVMOLE_PROVIDER_IDENTITY.id,
+            OPERATION,
+            reason,
+            { cause, userMessage: reason },
+          );
+        }
+        const limits = selectEvmWorkerLimits(inheritedLimits);
+        if (!limits.ok)
+          throw new AnalysisCapabilityUnavailableError(
+            EVMOLE_PROVIDER_IDENTITY.id,
+            OPERATION,
+            limits.error,
+            { userMessage: limits.error },
+          );
+        workerLimits = limits.value;
       }
-      let inheritedLimits: string;
-      try {
-        inheritedLimits = await readFile("/proc/self/limits", "utf8");
-      } catch (cause: unknown) {
-        const reason = `Could not read inherited Linux resource limits at /proc/self/limits: ${cause instanceof Error ? cause.message : String(cause)}`;
-        throw new AnalysisCapabilityUnavailableError(
-          EVMOLE_PROVIDER_IDENTITY.id,
-          OPERATION,
-          reason,
-          { cause, userMessage: reason },
-        );
-      }
-      const limits = selectEvmWorkerLimits(inheritedLimits);
-      if (!limits.ok)
-        throw new AnalysisCapabilityUnavailableError(
-          EVMOLE_PROVIDER_IDENTITY.id,
-          OPERATION,
-          limits.error,
-          { userMessage: limits.error },
-        );
-      workerLimits = limits.value;
       phase = "artifact-read";
       const carrier = await readStableArtifact(
         input.path,
@@ -271,24 +296,29 @@ export class EvmoleInterfaceProvider implements EvmInterfacePort {
       );
       const { NODE_OPTIONS: _ambientNodeOptions, ...environment } =
         this.environment;
+      const worker = [
+        "--max-old-space-size=256",
+        "--v8-pool-size=1",
+        "--disable-wasm-trap-handler",
+        fileURLToPath(new URL("./EvmoleInterfaceWorker.js", import.meta.url)),
+        requestPath,
+      ];
       const execution = await runOwnedCommand(
         {
-          command: limiter,
-          arguments: [
-            `--as=${String(workerLimits.addressSpaceBytes)}:`,
-            `--fsize=${String(workerLimits.fileSizeBytes)}:`,
-            "--core=0:",
-            `--cpu=${String(workerLimits.cpuSeconds)}:`,
-            "--",
-            process.execPath,
-            "--max-old-space-size=256",
-            "--v8-pool-size=1",
-            "--disable-wasm-trap-handler",
-            fileURLToPath(
-              new URL("./EvmoleInterfaceWorker.js", import.meta.url),
-            ),
-            requestPath,
-          ],
+          ...(bound === undefined
+            ? {
+                command: limiter,
+                arguments: [
+                  `--as=${String(workerLimits.addressSpaceBytes)}:`,
+                  `--fsize=${String(workerLimits.fileSizeBytes)}:`,
+                  "--core=0:",
+                  `--cpu=${String(workerLimits.cpuSeconds)}:`,
+                  "--",
+                  process.execPath,
+                  ...worker,
+                ],
+              }
+            : boundedLaunch(bound, process.execPath, worker)),
           cwd: root.path,
           expectedCommand: null,
           runId: `rea-evm-interface-${randomUUID()}`,
