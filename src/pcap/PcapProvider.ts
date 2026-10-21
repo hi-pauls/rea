@@ -291,7 +291,7 @@ export class PcapProvider {
   ): Promise<ProviderAvailability> {
     try {
       const { client } = await this.client("inspect_pcap_client", signal);
-      if (process.platform !== "linux" && process.platform !== "win32")
+      if (!["linux", "darwin", "win32"].includes(process.platform))
         return {
           status: "unavailable",
           code: "unsupported_host",
