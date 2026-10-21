@@ -135,6 +135,8 @@ import { GdbSessionManager } from "../gdb/GdbSessionManager.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { OpenOcdSessionManager } from "../embedded/OpenOcdSessionManager.js";
 import { registerOpenOcdTools } from "./registerOpenOcdTools.js";
+import { SaleaeLogicManager } from "../saleae/SaleaeLogicManager.js";
+import { registerSaleaeTools } from "./registerSaleaeTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
 import { registerRizinDebugTools } from "./registerRizinDebugTools.js";
 
@@ -350,6 +352,9 @@ export const createServer = (
   const openOcdSessions = new OpenOcdSessionManager({
     environment: providerEnvironment,
   });
+  const saleaeLogic = new SaleaeLogicManager({
+    environment: providerEnvironment,
+  });
   const android =
     options.androidAnalysis ?? createAndroidAnalysisProvider(environment);
   const pcap = options.pcapAnalysis ?? createPcapAnalysisProvider(environment);
@@ -416,6 +421,7 @@ export const createServer = (
       gdbSessions.closeAll(),
       rizinDebugSessions.closeAll(),
       openOcdSessions.closeAll(),
+      Promise.resolve(saleaeLogic.close()),
     ])
       .then((results) => {
         const failures = results.flatMap((result) =>
@@ -527,6 +533,16 @@ export const createServer = (
   registerOpenOcdTools(
     server,
     openOcdSessions,
+    toolLogger,
+    delivery,
+    session === undefined
+      ? undefined
+      : (evidence) => session.recordEvidence(evidence),
+    session,
+  );
+  registerSaleaeTools(
+    server,
+    saleaeLogic,
     toolLogger,
     delivery,
     session === undefined

@@ -51,6 +51,8 @@ const SOURCE_PATHS = {
   gdbProvider: "dist/gdb/GdbSessionManager.js",
   openocdContracts: "dist/contracts/openocdToolContracts.js",
   openocdProvider: "dist/embedded/OpenOcdSessionManager.js",
+  saleaeContracts: "dist/contracts/saleaeToolContracts.js",
+  saleaeProvider: "dist/saleae/SaleaeLogicManager.js",
   rizinDebugContracts: "dist/contracts/rizinDebugToolContracts.js",
   objdumpProvider: "dist/objdump/ObjdumpCommand.js",
   rizinProvider: "dist/rizin/RizinCommand.js",

@@ -88,6 +88,16 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
   inspect_adb_package: "reports install times without changing the device",
   list_adb_processes: "lists running processes without changing the device",
   inspect_web_event_listeners: "states it does not evaluate JavaScript",
+  inspect_saleae_logic:
+    "states it does not start Logic; it talks to a running one",
+  start_saleae_capture:
+    "arms the analyzer of an already running Logic; no target code runs",
+  saleae_capture_status:
+    "states it does not start Logic; it talks to a running one",
+  stop_saleae_capture:
+    "states it does not start Logic; it talks to a running one",
+  export_saleae_capture:
+    "states it does not start Logic; it talks to a running one",
 };
 
 const declaresForeignAuthority = (name: string): boolean => {

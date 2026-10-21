@@ -83,6 +83,19 @@ recording expansion cannot exceed the per-process address-space cap. These are
 not aggregate process-memory or filesystem quotas. The selected limiter is
 trusted and its path, digest and arguments are retained in Evidence.
 
+## Capturing with Saleae Logic 1.x
+
+The tools `inspect_saleae_logic`, `start_saleae_capture`, `saleae_capture_status`, `stop_saleae_capture`, and `export_saleae_capture` control an existing Saleae Logic 1.x instance via its scripting socket on Linux, macOS, and Windows. Enable the socket server in Logic's preferences. REA connects to `REA_SALEAE_HOST` and `REA_SALEAE_PORT`, which defaults to `127.0.0.1:10429`, and does not start Logic. Configure the trigger, sample rate, channels, and duration in Logic's own window.
+
+The `start_saleae_capture` command arms the capture and returns immediately, allowing the capture to wait for its trigger, so you must arm it before the event, such as before uploading firmware. When `focus` is set, REA brings Logic to the front afterwards using `osascript` on macOS, WScript `AppActivate` on Windows, or `wmctrl` on Linux, which prevents macOS from stalling a background Logic process and takes the keyboard focus. The `saleae_capture_status` value is false while the capture waits or records. The `export_saleae_capture` command waits for processing, has Logic write the active digital channels to a new absolute `output_path` on its own host, and reports the file's size and SHA-256. A `vcd` export can be decoded here with `decode_signal_recording` and `input_format: "vcd"`.
+
+```text
+start_saleae_capture {"focus":true}
+saleae_capture_status {}
+export_saleae_capture {"output_path":"/tmp/capture.vcd","format":"vcd"}
+decode_signal_recording {"path":"/tmp/capture.vcd","input_format":"vcd","decoders":"uart:rx=Channel_0"}
+```
+
 ## Verification
 
 ```sh

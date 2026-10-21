@@ -103,6 +103,25 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     idempotent: false,
   }),
   openocd_session_status: effects(),
+  inspect_saleae_logic: effects({ accessesNetwork: true }),
+  start_saleae_capture: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    changesUiState: true,
+    idempotent: false,
+  }),
+  saleae_capture_status: effects({ accessesNetwork: true }),
+  stop_saleae_capture: effects({
+    mutatesSession: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  export_saleae_capture: effects({
+    writesFilesystem: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
   close_openocd_session: effects({
     launchesProcess: true,
     mutatesSession: true,

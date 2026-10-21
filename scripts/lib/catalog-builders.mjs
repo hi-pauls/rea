@@ -24,6 +24,7 @@ export const toolFamilyCatalog = (sources) => {
           .REVERSE_ENGINEERING_TOOL_CONTRACTS,
         ...sources.gdbContracts.GDB_TOOL_CONTRACTS,
         ...sources.openocdContracts.OPENOCD_TOOL_CONTRACTS,
+        ...sources.saleaeContracts.SALEAE_TOOL_CONTRACTS,
         ...sources.rizinDebugContracts.RIZIN_DEBUG_TOOL_CONTRACTS,
       ],
     },
@@ -196,6 +197,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.openocdProvider.OPENOCD_PROVIDER_IDENTITY,
       contracts: sources.openocdContracts.OPENOCD_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.saleaeProvider.SALEAE_PROVIDER_IDENTITY,
+      contracts: sources.saleaeContracts.SALEAE_TOOL_CONTRACTS,
     },
     {
       identity: sources.rizinDebugProvider.RIZIN_DEBUGGER_PROVIDER_IDENTITY,
