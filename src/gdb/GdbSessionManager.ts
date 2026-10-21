@@ -31,6 +31,7 @@ import {
   verifyOwnedInferiorsEnded,
 } from "../process/ownedDebuggerSession.js";
 import { parseLinuxProcessStartTime } from "../process/ProcessOwnershipObservation.js";
+import { HOST_DEBUGGER, parseGdbCrossDebuggers } from "./GdbCrossDebuggers.js";
 
 const STARTUP_TIMEOUT_MS = 10_000;
 const COMMAND_TIMEOUT_MS = 120_000;
@@ -440,7 +441,7 @@ export const gdbErrorMessage = (cause: unknown): string =>
 interface GdbStartOptions {
   readonly inferiorTty?: string;
   readonly remoteTarget?: string;
-  readonly debuggerSelection?: "host" | "embedded";
+  readonly debuggerSelection?: string;
 }
 
 interface GdbSession {
@@ -503,7 +504,7 @@ export class GdbSessionManager {
     >
   >();
   readonly #command: string;
-  readonly #embeddedCommand: string | undefined;
+  readonly #crossDebuggers: ReadonlyMap<string, string>;
   readonly #environment: NodeJS.ProcessEnv;
   readonly #commandTimeoutMs: number;
   readonly #startupTimeoutMs: number;
@@ -545,7 +546,9 @@ export class GdbSessionManager {
   ) {
     this.#environment = { ...(options.environment ?? process.env) };
     this.#command = this.#environment.REA_GDB_COMMAND ?? "gdb";
-    this.#embeddedCommand = this.#environment.REA_GDB_EMBEDDED_COMMAND;
+    this.#crossDebuggers = parseGdbCrossDebuggers(
+      this.#environment.REA_GDB_CROSS_DEBUGGERS,
+    );
     this.#commandTimeoutMs = options.commandTimeoutMs ?? COMMAND_TIMEOUT_MS;
     this.#startupTimeoutMs = options.startupTimeoutMs ?? STARTUP_TIMEOUT_MS;
     this.#platform = options.platform ?? process.platform;
@@ -610,14 +613,17 @@ export class GdbSessionManager {
     if (this.#closing || signal?.aborted)
       return err(new AnalysisCancelledError("start_gdb_session"));
     if (
-      options.debuggerSelection === "embedded" &&
-      this.#embeddedCommand === undefined
+      options.debuggerSelection !== undefined &&
+      options.debuggerSelection !== HOST_DEBUGGER &&
+      !this.#crossDebuggers.has(options.debuggerSelection)
     )
       return err(
         new AnalysisCapabilityUnavailableError(
           "gdb",
           "start_gdb_session",
-          "No embedded debugger is configured; set REA_GDB_EMBEDDED_COMMAND to a cross-GDB executable such as arm-none-eabi-gdb.",
+          this.#crossDebuggers.size === 0
+            ? `No cross debugger named ${options.debuggerSelection} is configured, nor any other; REA_GDB_CROSS_DEBUGGERS lists cross-GDB paths such as .../arm-none-eabi-gdb, separated by ";".`
+            : `No cross debugger named ${options.debuggerSelection} is configured; the configured ones are ${[...this.#crossDebuggers.keys()].join(", ")}, and host runs REA_GDB_COMMAND.`,
         ),
       );
     if (options.remoteTarget === undefined && this.#platform !== "linux")
@@ -722,10 +728,10 @@ export class GdbSessionManager {
     try {
       const spawnOptions: OwnedProviderProcessSpawnOptions = {
         command:
-          options.debuggerSelection === "embedded" &&
-          this.#embeddedCommand !== undefined
-            ? this.#embeddedCommand
-            : this.#command,
+          options.debuggerSelection === undefined
+            ? this.#command
+            : (this.#crossDebuggers.get(options.debuggerSelection) ??
+              this.#command),
         arguments: ["--nx", "--quiet", `--interpreter=${miVersion}`],
         runId: randomUUID(),
         stdin: "pipe",

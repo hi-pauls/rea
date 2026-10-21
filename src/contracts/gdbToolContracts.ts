@@ -44,10 +44,11 @@ export const GDB_TOOL_CONTRACTS = [
           "Attach to an already running GDB server instead of spawning a local inferior: host:port, :port, or a serial device path, without whitespace.",
         ),
       debugger: z
-        .enum(["host", "embedded"])
+        .string()
+        .regex(/^[a-z0-9][a-z0-9._\x2d]*$/u)
         .optional()
         .describe(
-          "Which configured debugger to run: the host GDB from REA_GDB_COMMAND (the default), or the cross debugger for embedded targets from REA_GDB_EMBEDDED_COMMAND.",
+          "Which configured debugger to run: host for REA_GDB_COMMAND (the default), or the toolchain triple of a cross debugger in REA_GDB_CROSS_DEBUGGERS that matches the target chip, such as arm-none-eabi, xtensa-esp32s3-elf or riscv32-esp-elf. An unknown name is refused with the list of configured ones.",
         ),
     }),
     outputSchema: z.strictObject({
@@ -58,7 +59,7 @@ export const GDB_TOOL_CONTRACTS = [
       { title: "Start GDB", input: {} },
       {
         title: "Attach to an OpenOCD GDB server with the cross debugger",
-        input: { remote_target: ":3333", debugger: "embedded" },
+        input: { remote_target: ":3333", debugger: "arm-none-eabi" },
       },
     ],
   },

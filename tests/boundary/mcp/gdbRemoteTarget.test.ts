@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 
 import { AnalysisInputError } from "../../../src/domain/analysisErrorCore.js";
+import { parseGdbCrossDebuggers } from "../../../src/gdb/GdbCrossDebuggers.js";
 import { GdbSessionManager } from "../../../src/gdb/GdbSessionManager.js";
 
 const directories: string[] = [];
@@ -19,10 +20,10 @@ afterEach(async () => {
 
 // Answers only what a remote attach needs, so an unmodelled command fails the
 // test instead of passing silently.
-const writeFakeGdb = async (): Promise<string> => {
+const writeFakeGdb = async (fileName = "fake-gdb.mjs"): Promise<string> => {
   const directory = await mkdtemp(join(tmpdir(), "rea-gdb-remote-"));
   directories.push(directory);
-  const provider = join(directory, "fake-gdb.mjs");
+  const provider = join(directory, fileName);
   await writeFile(
     provider,
     `#!${process.execPath}
@@ -103,18 +104,53 @@ it("refuses a remote target that is not a bare host, port or device path", async
   }
 });
 
-it("refuses the embedded debugger when no cross debugger is configured", async () => {
+it("names cross debuggers by the toolchain triple in their file names", () => {
+  expect([
+    ...parseGdbCrossDebuggers(
+      [
+        "/opt/arm/bin/arm-none-eabi-gdb",
+        " C:\\Arduino\\bin\\xtensa-esp32s3-elf-gdb.exe ",
+        "/other/arm-none-eabi-gdb",
+        "/odd/host-gdb",
+        "",
+        "/usr/bin/gdb-multiarch",
+      ].join(";"),
+    ),
+  ]).toEqual([
+    ["arm-none-eabi", "/opt/arm/bin/arm-none-eabi-gdb"],
+    ["xtensa-esp32s3-elf", "C:\\Arduino\\bin\\xtensa-esp32s3-elf-gdb.exe"],
+    ["gdb-multiarch", "/usr/bin/gdb-multiarch"],
+  ]);
+});
+
+it("refuses a cross debugger when none is configured", async () => {
   const manager = new GdbSessionManager({
     platform: "linux",
     environment: {},
   });
   const started = await manager.start(undefined, {
     remoteTarget: ":3333",
-    debuggerSelection: "embedded",
+    debuggerSelection: "arm-none-eabi",
   });
   expect(started.ok).toBe(false);
   if (!started.ok)
-    expect(started.error.message).toContain("REA_GDB_EMBEDDED_COMMAND");
+    expect(started.error.message).toContain("REA_GDB_CROSS_DEBUGGERS");
+});
+
+it("lists the configured cross debuggers when the chosen one is missing", async () => {
+  const manager = new GdbSessionManager({
+    platform: "linux",
+    environment: {
+      REA_GDB_CROSS_DEBUGGERS: "/a/arm-none-eabi-gdb;/b/riscv32-esp-elf-gdb",
+    },
+  });
+  const started = await manager.start(undefined, {
+    remoteTarget: ":3333",
+    debuggerSelection: "xtensa-esp32-elf",
+  });
+  expect(!started.ok && started.error.message).toContain(
+    "the configured ones are arm-none-eabi, riscv32-esp-elf",
+  );
 });
 
 it.skipIf(process.platform === "win32").each(["darwin", "win32"] as const)(
@@ -137,19 +173,19 @@ it.skipIf(process.platform === "win32").each(["darwin", "win32"] as const)(
 );
 
 it.skipIf(process.platform === "win32")(
-  "runs the configured cross debugger for an embedded remote target",
+  "runs the cross debugger chosen by its toolchain triple",
   async () => {
-    const provider = await writeFakeGdb();
+    const provider = await writeFakeGdb("arm-none-eabi-gdb");
     const manager = new GdbSessionManager({
       platform: "darwin",
       environment: {
         REA_GDB_COMMAND: "/nonexistent/host-gdb",
-        REA_GDB_EMBEDDED_COMMAND: provider,
+        REA_GDB_CROSS_DEBUGGERS: `/nonexistent/riscv32-esp-elf-gdb;${provider}`,
       },
     });
     const started = await manager.start(undefined, {
       remoteTarget: ":3333",
-      debuggerSelection: "embedded",
+      debuggerSelection: "arm-none-eabi",
     });
     expect(started.ok).toBe(true);
     if (started.ok) await manager.close(started.value.session_id);
