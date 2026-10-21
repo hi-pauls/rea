@@ -10,10 +10,13 @@ import {
 } from "./parseFieldDiscovery.js";
 import {
   BOUNDED_PRODUCER_LIMITS as LIMITS,
-  prlimitArgumentVector,
   readLinuxResourceLimits,
   type LinuxResourceLimits,
 } from "../process/LinuxResourceLimits.js";
+import {
+  boundedLaunch,
+  prepareHostResourceBound,
+} from "../process/HostResourceBound.js";
 import { parsePacketOutput } from "./parsePacketOutput.js";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
@@ -136,10 +139,14 @@ export class TsharkCaptureProvider implements PacketCapturePort {
           cause: options.signal.reason,
         });
       await this.#resources.release();
-      if (this.platform !== "linux")
-        throw new Error(
-          "Packet inspection requires Linux with util-linux prlimit and REA_TSHARK_COMMAND so expanded captures are processed under an enforced address-space limit.",
-        );
+      const bound = await prepareHostResourceBound({
+        configured: limits,
+        prlimitVariable: "REA_TSHARK_PRLIMIT_COMMAND",
+        environment: this.environment,
+        readLimits: (configuredLimits) =>
+          this.#resources.readLimits(configuredLimits),
+        platform: this.platform,
+      });
       const configured = this.environment.REA_TSHARK_COMMAND ?? "";
       if (!isAbsolute(configured))
         throw new Error("Supply absolute REA_TSHARK_COMMAND for TShark 4.x.");
@@ -150,19 +157,14 @@ export class TsharkCaptureProvider implements PacketCapturePort {
         64 * 1024 * 1024,
         options?.signal,
       );
-      const configuredLimiter =
-        this.environment.REA_TSHARK_PRLIMIT_COMMAND ?? "/usr/bin/prlimit";
-      if (!isAbsolute(configuredLimiter))
-        throw new Error("REA_TSHARK_PRLIMIT_COMMAND must be absolute.");
-      const limiter = await realpath(configuredLimiter);
-      await access(limiter, constants.X_OK);
+      const limiter = bound.enforcer;
       const limiterIdentity = await this.#resources.read(
         limiter,
         64 * 1024 * 1024,
         options?.signal,
       );
-      effectiveLimits = await this.#resources.readLimits(limits);
-      const limitArguments = prlimitArgumentVector(effectiveLimits, command);
+      effectiveLimits = bound.limits;
+      const limitArguments = boundedLaunch(bound, command, []).arguments;
       phase = "workspace";
       root = await this.createRuntime();
       this.#resources.retain(root, undefined);
@@ -173,8 +175,7 @@ export class TsharkCaptureProvider implements PacketCapturePort {
         capturedOutput = undefined;
         const output = await runOwnedCommand(
           {
-            command: limiter,
-            arguments: [...limitArguments, ...args],
+            ...boundedLaunch(bound, command, args),
             ...(root === undefined ? {} : { cwd: root.path }),
             expectedCommand: null,
             runId: `rea-tshark-${randomUUID()}`,
@@ -263,7 +264,8 @@ export class TsharkCaptureProvider implements PacketCapturePort {
           arguments: [...args],
         },
         resource_limiter: {
-          configured_path: configuredLimiter,
+          mechanism: bound.mechanism,
+          configured_path: bound.configuredEnforcer,
           path: limiter,
           sha256: limiterIdentity.sha256,
           arguments: limitArguments,
@@ -386,7 +388,8 @@ export class TsharkCaptureProvider implements PacketCapturePort {
               "Packet limits count input packets before display filtering. Filtered results do not establish whole-capture or device traffic absence. Two-pass reassembly cannot recover bytes missing from the recording or beyond the read limit.",
               "Repeated field values remain ordered string arrays; raw packet bytes are included only when explicitly selected as a supported field. Export index/score metadata are omitted. All stderr, including warnings on exit zero, is retained.",
               "A private empty personal configuration is used. Installed libraries, global configuration and dissector plugins are trusted and not fully fingerprinted. File-only analysis and disabled name resolution do not constitute an OS sandbox.",
-              "Linux prlimit enforces soft and hard ceilings before execution, preserving stricter inherited limits: at most 1 GiB address space per process, 64 MiB per file, 30 CPU seconds and no core dumps. Effective limits are reported. Resident input is capped at 32 MiB, each command at 30 wall-clock seconds and combined output at 4 MiB. Output overflow fails. These are per-process/per-file limits, not aggregate memory or filesystem quotas; caller-supplied tools and the limiter are trusted.",
+              bound.limitation,
+              "Effective limits are reported. Resident input is capped at 32 MiB, each command at 30 wall-clock seconds and combined output at 4 MiB. Output overflow fails. Caller-supplied tools and the limiter are trusted.",
             ],
           }),
         );
@@ -548,7 +551,7 @@ export class TsharkCaptureProvider implements PacketCapturePort {
           ...(observedOutput === undefined
             ? {}
             : { capturedOutput: observedOutput }),
-          userMessage: `${reason} On Linux, configure TShark 4.x through REA_TSHARK_COMMAND and util-linux prlimit through REA_TSHARK_PRLIMIT_COMMAND (default /usr/bin/prlimit).`,
+          userMessage: `${reason} Configure TShark 4.x through REA_TSHARK_COMMAND; on Linux also util-linux prlimit through REA_TSHARK_PRLIMIT_COMMAND (default /usr/bin/prlimit).`,
         },
       );
     if (

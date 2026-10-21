@@ -394,7 +394,7 @@ it("refuses unsupported hosts before launching or allocating a workspace", async
     async () => {
       throw new Error("Must not allocate");
     },
-    "darwin",
+    "freebsd",
   );
   const result = await new PacketCaptureService(provider).inspect({
     path: "/recording.pcap",
@@ -403,7 +403,9 @@ it("refuses unsupported hosts before launching or allocating a workspace", async
   if (result.ok) throw new Error("Expected host refusal");
   expect(result.error).toMatchObject({
     _tag: "AnalysisCapabilityUnavailableError",
-    reason: expect.stringContaining("Linux"),
+    reason: expect.stringContaining(
+      "No resource bound can be enforced on freebsd",
+    ),
   });
 });
 

@@ -23,7 +23,8 @@ import { cleanupOwnedProcessGroup } from "../../../src/process/ProcessOwnership.
 import { spawnOwnedProviderProcess } from "../../../src/process/ProviderProcess.js";
 
 const isWindows = process.platform === "win32";
-const hasNativeBound = process.platform === "linux" || isWindows;
+const hasNativeBound =
+  process.platform === "linux" || process.platform === "darwin" || isWindows;
 const stubDir = join(import.meta.dirname, "../../fixtures/pcap");
 const tsharkStub = isWindows
   ? join(stubDir, "tshark-stub.cmd")
