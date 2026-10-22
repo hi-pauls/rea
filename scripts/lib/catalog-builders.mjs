@@ -26,6 +26,7 @@ export const toolFamilyCatalog = (sources) => {
         ...sources.openocdContracts.OPENOCD_TOOL_CONTRACTS,
         ...sources.saleaeContracts.SALEAE_TOOL_CONTRACTS,
         ...sources.oscilloscopeContracts.OSCILLOSCOPE_TOOL_CONTRACTS,
+        ...sources.powerSupplyContracts.POWER_SUPPLY_TOOL_CONTRACTS,
         ...sources.rizinDebugContracts.RIZIN_DEBUG_TOOL_CONTRACTS,
       ],
     },
@@ -206,6 +207,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.oscilloscopeProvider.OSCILLOSCOPE_PROVIDER_IDENTITY,
       contracts: sources.oscilloscopeContracts.OSCILLOSCOPE_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.powerSupplyProvider.POWER_SUPPLY_PROVIDER_IDENTITY,
+      contracts: sources.powerSupplyContracts.POWER_SUPPLY_TOOL_CONTRACTS,
     },
     {
       identity: sources.rizinDebugProvider.RIZIN_DEBUGGER_PROVIDER_IDENTITY,

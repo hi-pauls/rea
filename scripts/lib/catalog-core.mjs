@@ -54,6 +54,8 @@ const SOURCE_PATHS = {
   saleaeContracts: "dist/contracts/saleaeToolContracts.js",
   oscilloscopeContracts: "dist/contracts/oscilloscopeToolContracts.js",
   oscilloscopeProvider: "dist/oscilloscope/OscilloscopeManager.js",
+  powerSupplyContracts: "dist/contracts/powerSupplyToolContracts.js",
+  powerSupplyProvider: "dist/power/PowerSupplyManager.js",
   saleaeProvider: "dist/saleae/SaleaeLogicManager.js",
   rizinDebugContracts: "dist/contracts/rizinDebugToolContracts.js",
   objdumpProvider: "dist/objdump/ObjdumpCommand.js",

@@ -108,6 +108,18 @@ oscilloscope_acquisition_status {}
 export_oscilloscope_waveform {"channel":1,"output_path":"/tmp/channel1.csv"}
 ```
 
+## Powering a device with a Rigol DP800 power supply
+
+The tools `inspect_power_supply`, `configure_power_supply_channel` and `set_power_supply_output` control a Rigol DP800-series supply like the DP832 via SCPI commands sent through its LAN interface. Communication uses the host defined by `REA_POWER_SUPPLY_HOST` and the port `REA_POWER_SUPPLY_PORT`, which defaults to 5555. The `inspect_power_supply` command reads all channel ratings, setpoints, output states, regulation modes, measured voltage, current, power, and protection levels without altering any settings.
+
+`configure_power_supply_channel` modifies only the provided settings, rejecting any voltage or current outside the channel's rating, and switches on only the protection level specified in the call. On an enabled output, the new setting reaches the connected device immediately. `set_power_supply_output` switches an output and fails if the output cannot maintain the requested state, such as when a protection trips. Since both change what the connected device receives, they are marked as changing a device.
+
+```text
+inspect_power_supply {}
+configure_power_supply_channel {"channel":3,"voltage":3.3,"current_limit":0.2,"over_voltage_protection":3.6}
+set_power_supply_output {"channel":3,"on":true}
+```
+
 ## Verification
 
 ```sh

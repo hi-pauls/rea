@@ -122,6 +122,15 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     accessesNetwork: true,
     idempotent: false,
   }),
+  inspect_power_supply: effects({ accessesNetwork: true }),
+  configure_power_supply_channel: effects({
+    accessesNetwork: true,
+    mutatesDevice: true,
+  }),
+  set_power_supply_output: effects({
+    accessesNetwork: true,
+    mutatesDevice: true,
+  }),
   inspect_oscilloscope: effects({ accessesNetwork: true }),
   start_oscilloscope_acquisition: effects({
     mutatesSession: true,

@@ -35,6 +35,7 @@ import { GDB_TOOL_CONTRACTS } from "./gdbToolContracts.js";
 import { OPENOCD_TOOL_CONTRACTS } from "./openocdToolContracts.js";
 import { SALEAE_TOOL_CONTRACTS } from "./saleaeToolContracts.js";
 import { OSCILLOSCOPE_TOOL_CONTRACTS } from "./oscilloscopeToolContracts.js";
+import { POWER_SUPPLY_TOOL_CONTRACTS } from "./powerSupplyToolContracts.js";
 import { RIZIN_DEBUG_TOOL_CONTRACTS } from "./rizinDebugToolContracts.js";
 import { FRIDA_TOOL_CONTRACTS } from "./fridaToolContracts.js";
 
@@ -77,6 +78,7 @@ export const TOOL_CONTRACTS = [
   ...OPENOCD_TOOL_CONTRACTS,
   ...SALEAE_TOOL_CONTRACTS,
   ...OSCILLOSCOPE_TOOL_CONTRACTS,
+  ...POWER_SUPPLY_TOOL_CONTRACTS,
   ...RIZIN_DEBUG_TOOL_CONTRACTS,
   ...FRIDA_TOOL_CONTRACTS,
 ] as const;

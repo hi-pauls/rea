@@ -139,6 +139,8 @@ import { SaleaeLogicManager } from "../saleae/SaleaeLogicManager.js";
 import { registerSaleaeTools } from "./registerSaleaeTools.js";
 import { OscilloscopeManager } from "../oscilloscope/OscilloscopeManager.js";
 import { registerOscilloscopeTools } from "./registerOscilloscopeTools.js";
+import { PowerSupplyManager } from "../power/PowerSupplyManager.js";
+import { registerPowerSupplyTools } from "./registerPowerSupplyTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
 import { registerRizinDebugTools } from "./registerRizinDebugTools.js";
 
@@ -360,6 +362,9 @@ export const createServer = (
   const oscilloscope = new OscilloscopeManager({
     environment: providerEnvironment,
   });
+  const powerSupply = new PowerSupplyManager({
+    environment: providerEnvironment,
+  });
   const android =
     options.androidAnalysis ?? createAndroidAnalysisProvider(environment);
   const pcap = options.pcapAnalysis ?? createPcapAnalysisProvider(environment);
@@ -428,6 +433,7 @@ export const createServer = (
       openOcdSessions.closeAll(),
       Promise.resolve(saleaeLogic.close()),
       Promise.resolve(oscilloscope.close()),
+      Promise.resolve(powerSupply.close()),
     ])
       .then((results) => {
         const failures = results.flatMap((result) =>
@@ -556,6 +562,7 @@ export const createServer = (
       : (evidence) => session.recordEvidence(evidence),
     session,
   );
+  registerPowerSupplyTools(server, powerSupply, toolLogger, delivery, session);
   registerOscilloscopeTools(
     server,
     oscilloscope,
