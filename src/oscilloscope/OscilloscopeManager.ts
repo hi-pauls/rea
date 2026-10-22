@@ -9,7 +9,7 @@ import {
 import type { AnalysisError } from "../domain/analysisErrorBase.js";
 import { createEvidence, type Evidence } from "../domain/evidence.js";
 import { err, ok, type Result } from "../domain/result.js";
-import { ScpiSocketClient } from "./ScpiSocketClient.js";
+import { ScpiSocketClient } from "../scpi/ScpiSocketClient.js";
 
 export const OSCILLOSCOPE_PROVIDER_IDENTITY = {
   id: "rohde-schwarz-oscilloscope",

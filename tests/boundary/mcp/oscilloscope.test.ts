@@ -16,7 +16,7 @@ import {
 import {
   takeScpiBlock,
   takeScpiLine,
-} from "../../../src/oscilloscope/ScpiSocketClient.js";
+} from "../../../src/scpi/ScpiSocketClient.js";
 
 const cleanups: (() => Promise<void>)[] = [];
 
