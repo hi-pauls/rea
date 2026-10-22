@@ -122,6 +122,24 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     accessesNetwork: true,
     idempotent: false,
   }),
+  inspect_oscilloscope: effects({ accessesNetwork: true }),
+  start_oscilloscope_acquisition: effects({
+    mutatesSession: true,
+    accessesNetwork: true,
+    mayDiscardData: true,
+    idempotent: false,
+  }),
+  oscilloscope_acquisition_status: effects({ accessesNetwork: true }),
+  stop_oscilloscope_acquisition: effects({
+    mutatesSession: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  export_oscilloscope_waveform: effects({
+    writesFilesystem: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
   close_openocd_session: effects({
     launchesProcess: true,
     mutatesSession: true,

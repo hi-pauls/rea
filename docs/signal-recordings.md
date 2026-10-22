@@ -96,6 +96,18 @@ export_saleae_capture {"output_path":"/tmp/capture.vcd","format":"vcd"}
 decode_signal_recording {"path":"/tmp/capture.vcd","input_format":"vcd","decoders":"uart:rx=Channel_0"}
 ```
 
+## Capturing with a Rohde & Schwarz oscilloscope
+
+The tools `inspect_oscilloscope`, `start_oscilloscope_acquisition`, `oscilloscope_acquisition_status`, `stop_oscilloscope_acquisition` and `export_oscilloscope_waveform` control a Rohde & Schwarz oscilloscope from the RTB2000 series via SCPI commands sent through its LAN socket. The address for this socket is defined by the environment variables `REA_OSCILLOSCOPE_HOST` and `REA_OSCILLOSCOPE_PORT` (port default 5025). The product REA rejects any instrument that responds to the `*IDN?` query with a manufacturer name other than Rohde & Schwarz. Settings for probes, trigger, timebase, and vertical scale remain managed directly on the instrument itself.
+
+The `start_oscilloscope_acquisition` tool arms a single acquisition and returns immediately. The `oscilloscope_acquisition_status` tool reports the instrument's current acquisition state. The `export_oscilloscope_waveform` tool reads one enabled channel as 32-bit floats and writes a CSV file with `time_s` and `volts` columns on REA's host, restoring the instrument's data format afterwards. A waveform read while the instrument is still acquiring is a snapshot, as the Evidence states.
+
+```text
+start_oscilloscope_acquisition {}
+oscilloscope_acquisition_status {}
+export_oscilloscope_waveform {"channel":1,"output_path":"/tmp/channel1.csv"}
+```
+
 ## Verification
 
 ```sh

@@ -137,6 +137,8 @@ import { OpenOcdSessionManager } from "../embedded/OpenOcdSessionManager.js";
 import { registerOpenOcdTools } from "./registerOpenOcdTools.js";
 import { SaleaeLogicManager } from "../saleae/SaleaeLogicManager.js";
 import { registerSaleaeTools } from "./registerSaleaeTools.js";
+import { OscilloscopeManager } from "../oscilloscope/OscilloscopeManager.js";
+import { registerOscilloscopeTools } from "./registerOscilloscopeTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
 import { registerRizinDebugTools } from "./registerRizinDebugTools.js";
 
@@ -355,6 +357,9 @@ export const createServer = (
   const saleaeLogic = new SaleaeLogicManager({
     environment: providerEnvironment,
   });
+  const oscilloscope = new OscilloscopeManager({
+    environment: providerEnvironment,
+  });
   const android =
     options.androidAnalysis ?? createAndroidAnalysisProvider(environment);
   const pcap = options.pcapAnalysis ?? createPcapAnalysisProvider(environment);
@@ -422,6 +427,7 @@ export const createServer = (
       rizinDebugSessions.closeAll(),
       openOcdSessions.closeAll(),
       Promise.resolve(saleaeLogic.close()),
+      Promise.resolve(oscilloscope.close()),
     ])
       .then((results) => {
         const failures = results.flatMap((result) =>
@@ -543,6 +549,16 @@ export const createServer = (
   registerSaleaeTools(
     server,
     saleaeLogic,
+    toolLogger,
+    delivery,
+    session === undefined
+      ? undefined
+      : (evidence) => session.recordEvidence(evidence),
+    session,
+  );
+  registerOscilloscopeTools(
+    server,
+    oscilloscope,
     toolLogger,
     delivery,
     session === undefined
